@@ -48,11 +48,7 @@ data class RouteRule(
             }.getOrElse { defaultFor(packageName) }
         }
 
-        fun defaultFor(packageName: String): RouteRule = when (packageName) {
-            "com.tencent.mm" -> RouteRule(packageName, deviceType = 11, deviceName = "USB microphone")
-            "com.discord" -> RouteRule(packageName, deviceType = 15, deviceName = "Built-in microphone")
-            else -> RouteRule(packageName)
-        }
+        fun defaultFor(packageName: String): RouteRule = RouteRule(packageName)
     }
 }
 
@@ -90,12 +86,8 @@ object RouteStore {
 
     fun readEffective(prefs: SharedPreferences, packageName: String): RouteRule {
         if (hasRule(prefs, packageName)) return read(prefs, packageName)
-
-        val builtInDefault = RouteRule.defaultFor(packageName)
-        if (packageName == "com.tencent.mm" || packageName == "com.discord") return builtInDefault
-
         val global = readGlobal(prefs)
-        return if (global.enabled) global.copy(packageName = packageName) else builtInDefault
+        return if (global.enabled) global.copy(packageName = packageName) else RouteRule.defaultFor(packageName)
     }
 
     fun configuredPackages(prefs: SharedPreferences): List<String> = prefs.all.keys
