@@ -23,14 +23,10 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Install Android SDK 37 preview
-        run: |
-          "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --channel=3 "platforms;android-37"
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.5.1'
+          gradle-version: '8.13'
 
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
