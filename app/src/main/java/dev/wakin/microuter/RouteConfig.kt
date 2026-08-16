@@ -52,7 +52,7 @@ object RouteStore {
         RouteRule.fromJson(packageName, prefs.getString(PREFIX + packageName, null))
 
     fun write(prefs: SharedPreferences, rule: RouteRule) {
-        prefs.edit().putString(PREFIX + rule.packageName, rule.toJson()).apply()
+        prefs.edit()?.putString(PREFIX + rule.packageName, rule.toJson())?.apply()
     }
 
     fun configuredPackages(prefs: SharedPreferences): List<String> = prefs.all.keys
