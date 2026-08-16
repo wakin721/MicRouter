@@ -143,8 +143,20 @@ private fun AppsPage(
     var search by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<AppItem?>(null) }
     var editGlobal by remember { mutableStateOf(false) }
+    var revision by remember { mutableIntStateOf(0) }
     val prefs = remember(service) { service?.getRemotePreferences(RouteStore.PREFS) }
     val globalRule = prefs?.let { RouteStore.readGlobal(it) }
+
+    val visibleApps = remember(apps, search, prefs, revision) {
+        apps.asSequence()
+            .filter { search.isBlank() || it.label.contains(search, true) || it.packageName.contains(search, true) }
+            .sortedWith(
+                compareByDescending<AppItem> { app -> prefs?.let { RouteStore.hasRule(it, app.packageName) } == true }
+                    .thenBy { it.label.lowercase() }
+                    .thenBy { it.packageName }
+            )
+            .toList()
+    }
 
     Column(modifier.padding(horizontal = 16.dp)) {
         Card(
@@ -184,13 +196,13 @@ private fun AppsPage(
                 Spacer(Modifier.height(8.dp))
                 Text(
                     if (service == null) tr("服务不可用", "Service unavailable")
-                    else tr("应用当前已配置的软件作用域；启用全局设置时会包含软件列表中的应用。", "Apply configured app scope; global mode also includes apps shown here.")
+                    else tr("仅申请你已经配置的软件；不再包含推荐软件。", "Only request apps you configured; no recommended apps are added.")
                 )
                 Spacer(Modifier.height(12.dp))
                 Button(
-                    onClick = { requestConfiguredScope(context, service, apps, language) },
+                    onClick = { requestConfiguredScope(context, service, language) },
                     enabled = service != null
-                ) { Text(tr("应用作用域", "Apply scope")) }
+                ) { Text(tr("应用已配置软件作用域", "Apply configured app scope")) }
             }
         }
 
@@ -205,7 +217,8 @@ private fun AppsPage(
         )
         Spacer(Modifier.height(10.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(apps.filter { search.isBlank() || it.label.contains(search, true) || it.packageName.contains(search, true) }) { app ->
+            items(visibleApps, key = { it.packageName }) { app ->
+                val configured = prefs?.let { RouteStore.hasRule(it, app.packageName) } == true
                 val summary = prefs?.let { RouteStore.readEffective(it, app.packageName) }
                 ElevatedCard(
                     onClick = {
@@ -216,8 +229,15 @@ private fun AppsPage(
                     shape = RoundedCornerShape(24.dp)
                 ) {
                     Column(Modifier.padding(18.dp)) {
-                        Text(app.label, style = MaterialTheme.typography.titleMedium)
-                        Text(app.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.weight(1f)) {
+                                Text(app.label, style = MaterialTheme.typography.titleMedium)
+                                Text(app.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (configured) {
+                                AssistChip(onClick = {}, label = { Text(tr("已设置", "Configured")) })
+                            }
+                        }
                         if (summary != null) {
                             Spacer(Modifier.height(6.dp))
                             Text(
@@ -240,8 +260,10 @@ private fun AppsPage(
             subtitle = tr("作为未单独配置软件的默认规则", "Default rule for apps without an override"),
             initialRule = RouteStore.readGlobal(service.getRemotePreferences(RouteStore.PREFS)),
             language = language,
-            onSave = {
-                RouteStore.writeGlobal(service.getRemotePreferences(RouteStore.PREFS), it)
+            allowScopeRequest = false,
+            onSave = { rule, _ ->
+                RouteStore.writeGlobal(service.getRemotePreferences(RouteStore.PREFS), rule)
+                revision++
                 editGlobal = false
             },
             onDismiss = { editGlobal = false }
@@ -257,8 +279,11 @@ private fun AppsPage(
                 subtitle = app.packageName,
                 initialRule = RouteStore.read(remote, app.packageName),
                 language = language,
-                onSave = {
-                    RouteStore.write(remote, it.copy(packageName = app.packageName))
+                allowScopeRequest = true,
+                onSave = { rule, applyScope ->
+                    RouteStore.write(remote, rule.copy(packageName = app.packageName))
+                    revision++
+                    if (applyScope) requestAppScope(context, service, app.packageName, language)
                     editing = null
                 },
                 onDismiss = { editing = null }
@@ -358,12 +383,14 @@ private fun RouteDialog(
     subtitle: String,
     initialRule: RouteRule,
     language: String,
-    onSave: (RouteRule) -> Unit,
+    allowScopeRequest: Boolean,
+    onSave: (RouteRule, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     fun tr(zh: String, en: String) = if (language == "zh") zh else en
     var rule by remember(title, initialRule.toJson()) { mutableStateOf(initialRule) }
-    val devices = remember { currentInputs(context, language) }
+    var applyScope by remember(title) { mutableStateOf(false) }
+    val devices = remember(language) { currentInputs(context, language) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -405,9 +432,19 @@ private fun RouteDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (allowScopeRequest) {
+                    HorizontalDivider()
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.weight(1f)) {
+                            Text(tr("保存后申请 LSPosed 作用域", "Apply LSPosed scope after saving"), style = MaterialTheme.typography.titleMedium)
+                            Text(tr("仅申请当前软件，不添加推荐软件。", "Request only this app; no recommended apps are added."), style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(checked = applyScope, onCheckedChange = { applyScope = it })
+                    }
+                }
             }
         },
-        confirmButton = { Button(onClick = { onSave(rule) }) { Text(tr("保存", "Save")) } },
+        confirmButton = { Button(onClick = { onSave(rule, applyScope) }) { Text(tr("保存", "Save")) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } }
     )
 }
@@ -490,22 +527,28 @@ private fun deviceTypeName(type: Int, language: String): String {
     }
 }
 
-private fun requestConfiguredScope(context: Context, service: XposedService?, apps: List<AppItem>, language: String) {
+private fun requestConfiguredScope(context: Context, service: XposedService?, language: String) {
     if (service == null) return
     val prefs = service.getRemotePreferences(RouteStore.PREFS)
-    val global = RouteStore.readGlobal(prefs)
-    val packages = buildList {
-        addAll(RouteStore.configuredPackages(prefs))
-        add("com.tencent.mm")
-        add("com.discord")
-        if (global.enabled) addAll(apps.map { it.packageName })
-    }.distinct()
+    val packages = RouteStore.configuredPackages(prefs).distinct()
+    if (packages.isEmpty()) {
+        Toast.makeText(context, if (language == "zh") "还没有已配置的软件" else "No configured apps yet", Toast.LENGTH_SHORT).show()
+        return
+    }
+    requestScope(context, service, packages, language)
+}
 
+private fun requestAppScope(context: Context, service: XposedService, packageName: String, language: String) {
+    requestScope(context, service, listOf(packageName), language)
+}
+
+private fun requestScope(context: Context, service: XposedService, packages: List<String>, language: String) {
     service.requestScope(packages, object : OnScopeEventListener {
         override fun onScopeRequestApproved(approved: List<String>) {
             val text = if (language == "zh") "已批准 ${approved.size} 个软件" else "Scope approved for ${approved.size} apps"
             Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
         }
+
         override fun onScopeRequestFailed(message: String) {
             val text = if (language == "zh") "作用域请求失败：$message" else "Scope request failed: $message"
             Toast.makeText(context, text, Toast.LENGTH_LONG).show()
