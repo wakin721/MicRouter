@@ -15,11 +15,13 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -39,6 +41,8 @@ private data class DeviceChoice(
 )
 
 private enum class MainPage { Apps, About }
+private enum class AppearanceMode { Dynamic, Light, Dark }
+private enum class ThemeColor { Blue, Purple, Green, Orange, Rose }
 
 class MainActivity : ComponentActivity() {
     private var xposedService by mutableStateOf<XposedService?>(null)
@@ -67,11 +71,33 @@ private fun MicRouterUi(service: XposedService?) {
     var language by remember { mutableStateOf(uiPrefs.getString("language", "zh") ?: "zh") }
     var dynamicColor by remember { mutableStateOf(uiPrefs.getBoolean("dynamic_color", true)) }
     var autoApplyScope by remember { mutableStateOf(uiPrefs.getBoolean("auto_apply_scope", false)) }
+    var appearanceMode by remember {
+        mutableStateOf(
+            AppearanceMode.entries.firstOrNull {
+                it.name.equals(uiPrefs.getString("appearance_mode", "dynamic"), ignoreCase = true)
+            } ?: AppearanceMode.Dynamic
+        )
+    }
+    var themeColor by remember {
+        mutableStateOf(
+            ThemeColor.entries.firstOrNull {
+                it.name.equals(uiPrefs.getString("theme_color", "blue"), ignoreCase = true)
+            } ?: ThemeColor.Blue
+        )
+    }
     var page by remember { mutableStateOf(MainPage.Apps) }
-    val dark = isSystemInDarkTheme()
+
+    val systemDark = isSystemInDarkTheme()
+    val dark = when (appearanceMode) {
+        AppearanceMode.Dynamic -> systemDark
+        AppearanceMode.Light -> false
+        AppearanceMode.Dark -> true
+    }
     val colors = if (dynamicColor && Build.VERSION.SDK_INT >= 31) {
         if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-    } else if (dark) darkColorScheme() else lightColorScheme()
+    } else {
+        customColorScheme(themeColor, dark)
+    }
     val apps = remember { installedApps(context) }
 
     fun tr(zh: String, en: String) = if (language == "zh") zh else en
@@ -83,7 +109,7 @@ private fun MicRouterUi(service: XposedService?) {
                     Modifier.padding(
                         start = 20.dp,
                         end = 20.dp,
-                        top = 32.dp,
+                        top = 44.dp,
                         bottom = 18.dp
                     )
                 ) {
@@ -129,6 +155,8 @@ private fun MicRouterUi(service: XposedService?) {
                     service = service,
                     language = language,
                     dynamicColor = dynamicColor,
+                    appearanceMode = appearanceMode,
+                    themeColor = themeColor,
                     autoApplyScope = autoApplyScope,
                     onLanguageChange = {
                         language = it
@@ -137,6 +165,14 @@ private fun MicRouterUi(service: XposedService?) {
                     onDynamicColorChange = {
                         dynamicColor = it
                         uiPrefs.edit().putBoolean("dynamic_color", it).apply()
+                    },
+                    onAppearanceModeChange = {
+                        appearanceMode = it
+                        uiPrefs.edit().putString("appearance_mode", it.name.lowercase()).apply()
+                    },
+                    onThemeColorChange = {
+                        themeColor = it
+                        uiPrefs.edit().putString("theme_color", it.name.lowercase()).apply()
                     },
                     onAutoApplyScopeChange = {
                         autoApplyScope = it
@@ -333,13 +369,18 @@ private fun AboutPage(
     service: XposedService?,
     language: String,
     dynamicColor: Boolean,
+    appearanceMode: AppearanceMode,
+    themeColor: ThemeColor,
     autoApplyScope: Boolean,
     onLanguageChange: (String) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
+    onAppearanceModeChange: (AppearanceMode) -> Unit,
+    onThemeColorChange: (ThemeColor) -> Unit,
     onAutoApplyScopeChange: (Boolean) -> Unit,
 ) {
     fun tr(zh: String, en: String) = if (language == "zh") zh else en
     var languageMenu by remember { mutableStateOf(false) }
+    var themeMenu by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier.padding(horizontal = 16.dp),
@@ -386,6 +427,33 @@ private fun AboutPage(
                             }
                         }
                     }
+
+                    HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                    Text(tr("深色模式", "Appearance"), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        tr("动态模式会跟随系统浅色或深色设置。", "Dynamic follows the system light or dark appearance."),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AppearanceMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = appearanceMode == mode,
+                                onClick = { onAppearanceModeChange(mode) },
+                                label = {
+                                    Text(
+                                        when (mode) {
+                                            AppearanceMode.Dynamic -> tr("动态", "Dynamic")
+                                            AppearanceMode.Light -> tr("浅色", "Light")
+                                            AppearanceMode.Dark -> tr("深色", "Dark")
+                                        }
+                                    )
+                                }
+                            )
+                        }
+                    }
+
                     HorizontalDivider(Modifier.padding(vertical = 12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.weight(1f)) {
@@ -397,6 +465,53 @@ private fun AboutPage(
                         }
                         Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
                     }
+
+                    if (!dynamicColor) {
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.weight(1f)) {
+                                Text(tr("主题颜色", "Theme color"), style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    themeColorName(themeColor, language),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Box {
+                                FilledTonalButton(onClick = { themeMenu = true }) {
+                                    Surface(
+                                        modifier = Modifier.size(18.dp),
+                                        shape = CircleShape,
+                                        color = themePreviewColor(themeColor)
+                                    ) {}
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(themeColorName(themeColor, language))
+                                }
+                                DropdownMenu(expanded = themeMenu, onDismissRequest = { themeMenu = false }) {
+                                    ThemeColor.entries.forEach { color ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Surface(
+                                                        modifier = Modifier.size(18.dp),
+                                                        shape = CircleShape,
+                                                        color = themePreviewColor(color)
+                                                    ) {}
+                                                    Spacer(Modifier.width(10.dp))
+                                                    Text(themeColorName(color, language))
+                                                }
+                                            },
+                                            onClick = {
+                                                onThemeColorChange(color)
+                                                themeMenu = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     HorizontalDivider(Modifier.padding(vertical = 12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.weight(1f)) {
@@ -560,6 +675,120 @@ private fun deviceTypeName(type: Int, language: String): String {
         AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> tr("蓝牙 SCO 麦克风", "Bluetooth SCO microphone")
         AudioDeviceInfo.TYPE_BLE_HEADSET -> tr("蓝牙 LE 麦克风", "Bluetooth LE microphone")
         else -> tr("音频输入 $type", "Audio input $type")
+    }
+}
+
+private fun themeColorName(color: ThemeColor, language: String): String = when (color) {
+    ThemeColor.Blue -> if (language == "zh") "蓝色" else "Blue"
+    ThemeColor.Purple -> if (language == "zh") "紫色" else "Purple"
+    ThemeColor.Green -> if (language == "zh") "绿色" else "Green"
+    ThemeColor.Orange -> if (language == "zh") "橙色" else "Orange"
+    ThemeColor.Rose -> if (language == "zh") "玫红" else "Rose"
+}
+
+private fun themePreviewColor(color: ThemeColor): Color = when (color) {
+    ThemeColor.Blue -> Color(0xFF0B57D0)
+    ThemeColor.Purple -> Color(0xFF6750A4)
+    ThemeColor.Green -> Color(0xFF006C4C)
+    ThemeColor.Orange -> Color(0xFF8D4E00)
+    ThemeColor.Rose -> Color(0xFF9A405C)
+}
+
+private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = when (color) {
+    ThemeColor.Blue -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFFA8C7FA),
+            primaryContainer = Color(0xFF0842A0),
+            secondary = Color(0xFFB9C6E4),
+            secondaryContainer = Color(0xFF33466A),
+            tertiary = Color(0xFFE1BBDD),
+            tertiaryContainer = Color(0xFF593F5B),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF0B57D0),
+            primaryContainer = Color(0xFFD3E3FD),
+            secondary = Color(0xFF475D92),
+            secondaryContainer = Color(0xFFD9E2FF),
+            tertiary = Color(0xFF745470),
+            tertiaryContainer = Color(0xFFFFD7F0),
+        )
+    }
+    ThemeColor.Purple -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFFD0BCFF),
+            primaryContainer = Color(0xFF4F378B),
+            secondary = Color(0xFFCCC2DC),
+            secondaryContainer = Color(0xFF4A4458),
+            tertiary = Color(0xFFEFB8C8),
+            tertiaryContainer = Color(0xFF633B48),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF6750A4),
+            primaryContainer = Color(0xFFEADDFF),
+            secondary = Color(0xFF625B71),
+            secondaryContainer = Color(0xFFE8DEF8),
+            tertiary = Color(0xFF7D5260),
+            tertiaryContainer = Color(0xFFFFD8E4),
+        )
+    }
+    ThemeColor.Green -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFF6FDBAF),
+            primaryContainer = Color(0xFF005138),
+            secondary = Color(0xFFB4CCBD),
+            secondaryContainer = Color(0xFF354B3F),
+            tertiary = Color(0xFFA5CDDF),
+            tertiaryContainer = Color(0xFF244C5B),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF006C4C),
+            primaryContainer = Color(0xFF8BF8C8),
+            secondary = Color(0xFF4D6357),
+            secondaryContainer = Color(0xFFCFE9D9),
+            tertiary = Color(0xFF3D6373),
+            tertiaryContainer = Color(0xFFC1E8FB),
+        )
+    }
+    ThemeColor.Orange -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFFFFB870),
+            primaryContainer = Color(0xFF6B3900),
+            secondary = Color(0xFFE1C1A3),
+            secondaryContainer = Color(0xFF59422D),
+            tertiary = Color(0xFFC3CA9E),
+            tertiaryContainer = Color(0xFF42492B),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF8D4E00),
+            primaryContainer = Color(0xFFFFDCC0),
+            secondary = Color(0xFF725A42),
+            secondaryContainer = Color(0xFFFFDCC0),
+            tertiary = Color(0xFF5A6146),
+            tertiaryContainer = Color(0xFFDEE6BF),
+        )
+    }
+    ThemeColor.Rose -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFFFFB1C5),
+            primaryContainer = Color(0xFF7C2944),
+            secondary = Color(0xFFE4BDC7),
+            secondaryContainer = Color(0xFF594047),
+            tertiary = Color(0xFFF0BE95),
+            tertiaryContainer = Color(0xFF5D421E),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF9A405C),
+            primaryContainer = Color(0xFFFFD9E1),
+            secondary = Color(0xFF74565E),
+            secondaryContainer = Color(0xFFFFD9E1),
+            tertiary = Color(0xFF7C5735),
+            tertiaryContainer = Color(0xFFFFDCBB),
+        )
     }
 }
 
