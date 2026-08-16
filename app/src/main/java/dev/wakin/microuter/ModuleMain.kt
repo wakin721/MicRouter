@@ -18,7 +18,7 @@ class ModuleMain : XposedModule() {
         if (!param.isFirstPackage) return
         val pkg = param.packageName
         val prefs = getRemotePreferences(RouteStore.PREFS)
-        fun rule() = RouteStore.read(prefs, pkg)
+        fun rule() = RouteStore.readEffective(prefs, pkg)
 
         runCatching {
             val start = AudioRecord::class.java.getDeclaredMethod("startRecording")
@@ -65,7 +65,9 @@ class ModuleMain : XposedModule() {
         if (rule.deviceType < 0) return null
         val am = context()?.getSystemService(AudioManager::class.java) ?: return null
         val inputs = am.getDevices(AudioManager.GET_DEVICES_INPUTS).filter { it.isSource && it.type == rule.deviceType }
-        return inputs.firstOrNull { rule.deviceAddress.isNotBlank() && it.address == rule.deviceAddress } ?: inputs.firstOrNull()
+        return inputs.firstOrNull { rule.deviceAddress.isNotBlank() && it.address == rule.deviceAddress }
+            ?: inputs.firstOrNull { rule.deviceIdHint >= 0 && it.id == rule.deviceIdHint }
+            ?: inputs.firstOrNull()
     }
 
     private fun applyDevice(record: AudioRecord, rule: RouteRule) {
