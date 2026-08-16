@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,8 +20,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.drawable.toBitmap
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedService.OnScopeEventListener
 
@@ -202,27 +205,6 @@ private fun AppsPage(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-        ) {
-            Column(Modifier.padding(20.dp)) {
-                Text(tr("LSPosed 作用域", "LSPosed scope"), style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    if (service == null) tr("服务不可用", "Service unavailable")
-                    else tr("仅申请你已经配置的软件；不再包含推荐软件。", "Only request apps you configured; no recommended apps are added.")
-                )
-                Spacer(Modifier.height(12.dp))
-                Button(
-                    onClick = { requestConfiguredScope(context, service, language) },
-                    enabled = service != null
-                ) { Text(tr("应用已配置软件作用域", "Apply configured app scope")) }
-            }
-        }
-
         Spacer(Modifier.height(14.dp))
         OutlinedTextField(
             value = search,
@@ -245,23 +227,31 @@ private fun AppsPage(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp)
                 ) {
-                    Column(Modifier.padding(18.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.weight(1f)) {
-                                Text(app.label, style = MaterialTheme.typography.titleMedium)
-                                Text(app.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            if (configured) {
-                                AssistChip(onClick = {}, label = { Text(tr("已设置", "Configured")) })
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AppIcon(context, app)
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(app.label, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                app.packageName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (summary != null) {
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    if (summary.enabled) summary.deviceName else tr("不干预", "No override"),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
-                        if (summary != null) {
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                if (summary.enabled) summary.deviceName else tr("不干预", "No override"),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                        if (configured) {
+                            Spacer(Modifier.width(8.dp))
+                            AssistChip(onClick = {}, label = { Text(tr("已设置", "Configured")) })
                         }
                     }
                 }
@@ -303,6 +293,36 @@ private fun AppsPage(
                 },
                 onDismiss = { editing = null }
             )
+        }
+    }
+}
+
+@Composable
+private fun AppIcon(context: Context, app: AppItem) {
+    val bitmap = remember(app.packageName) {
+        runCatching {
+            context.packageManager
+                .getApplicationIcon(app.packageName)
+                .toBitmap(width = 96, height = 96)
+                .asImageBitmap()
+        }.getOrNull()
+    }
+
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap,
+            contentDescription = app.label,
+            modifier = Modifier.size(48.dp)
+        )
+    } else {
+        Surface(
+            modifier = Modifier.size(48.dp),
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(app.label.take(1).uppercase(), style = MaterialTheme.typography.titleMedium)
+            }
         }
     }
 }
@@ -541,17 +561,6 @@ private fun deviceTypeName(type: Int, language: String): String {
         AudioDeviceInfo.TYPE_BLE_HEADSET -> tr("蓝牙 LE 麦克风", "Bluetooth LE microphone")
         else -> tr("音频输入 $type", "Audio input $type")
     }
-}
-
-private fun requestConfiguredScope(context: Context, service: XposedService?, language: String) {
-    if (service == null) return
-    val prefs = service.getRemotePreferences(RouteStore.PREFS)
-    val packages = RouteStore.configuredPackages(prefs).distinct()
-    if (packages.isEmpty()) {
-        Toast.makeText(context, if (language == "zh") "还没有已配置的软件" else "No configured apps yet", Toast.LENGTH_SHORT).show()
-        return
-    }
-    requestScope(context, service, packages, language)
 }
 
 private fun requestAppScope(context: Context, service: XposedService, packageName: String, language: String) {
