@@ -1,6 +1,5 @@
 package dev.wakin.microuter
 
-import android.app.ActivityThread
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
@@ -57,7 +56,10 @@ class ModuleMain : XposedModule() {
             }
     }
 
-    private fun context(): Context? = runCatching { ActivityThread.currentApplication() }.getOrNull()
+    private fun context(): Context? = runCatching {
+        val activityThread = Class.forName("android.app.ActivityThread")
+        activityThread.getDeclaredMethod("currentApplication").invoke(null) as? Context
+    }.getOrNull()
 
     private fun findDevice(rule: RouteRule): AudioDeviceInfo? {
         if (rule.deviceType < 0) return null
@@ -98,7 +100,9 @@ class ModuleMain : XposedModule() {
                 while (i < end) {
                     val sample = ((buffer[i + 1].toInt() shl 8) or (buffer[i].toInt() and 0xff)).toShort().toInt()
                     val scaled = (sample * gain).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                    buffer[i] = (scaled and 0xff).toByte(); buffer[i + 1] = ((scaled shr 8) and 0xff).toByte(); i += 2
+                    buffer[i] = (scaled and 0xff).toByte()
+                    buffer[i + 1] = ((scaled shr 8) and 0xff).toByte()
+                    i += 2
                 }
             }
         }
