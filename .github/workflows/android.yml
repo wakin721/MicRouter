@@ -24,7 +24,7 @@ jobs:
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.13'
 
@@ -32,7 +32,7 @@ jobs:
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: MicRouter-debug
           path: app/build/outputs/apk/debug/app-debug.apk
