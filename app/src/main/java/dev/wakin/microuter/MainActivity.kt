@@ -63,6 +63,7 @@ private fun MicRouterUi(service: XposedService?) {
     val uiPrefs = remember { context.getSharedPreferences("ui_settings", Context.MODE_PRIVATE) }
     var language by remember { mutableStateOf(uiPrefs.getString("language", "zh") ?: "zh") }
     var dynamicColor by remember { mutableStateOf(uiPrefs.getBoolean("dynamic_color", true)) }
+    var autoApplyScope by remember { mutableStateOf(uiPrefs.getBoolean("auto_apply_scope", false)) }
     var page by remember { mutableStateOf(MainPage.Apps) }
     val dark = isSystemInDarkTheme()
     val colors = if (dynamicColor && Build.VERSION.SDK_INT >= 31) {
@@ -75,7 +76,14 @@ private fun MicRouterUi(service: XposedService?) {
     MaterialTheme(colorScheme = colors) {
         Scaffold(
             topBar = {
-                Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+                Column(
+                    Modifier.padding(
+                        start = 20.dp,
+                        end = 20.dp,
+                        top = 32.dp,
+                        bottom = 18.dp
+                    )
+                ) {
                     Text("MicRouter", style = MaterialTheme.typography.displaySmall)
                     Text(
                         when (page) {
@@ -111,12 +119,14 @@ private fun MicRouterUi(service: XposedService?) {
                     service = service,
                     apps = apps,
                     language = language,
+                    autoApplyScope = autoApplyScope,
                 )
                 MainPage.About -> AboutPage(
                     modifier = Modifier.padding(padding),
                     service = service,
                     language = language,
                     dynamicColor = dynamicColor,
+                    autoApplyScope = autoApplyScope,
                     onLanguageChange = {
                         language = it
                         uiPrefs.edit().putString("language", it).apply()
@@ -124,6 +134,10 @@ private fun MicRouterUi(service: XposedService?) {
                     onDynamicColorChange = {
                         dynamicColor = it
                         uiPrefs.edit().putBoolean("dynamic_color", it).apply()
+                    },
+                    onAutoApplyScopeChange = {
+                        autoApplyScope = it
+                        uiPrefs.edit().putBoolean("auto_apply_scope", it).apply()
                     },
                 )
             }
@@ -138,6 +152,7 @@ private fun AppsPage(
     service: XposedService?,
     apps: List<AppItem>,
     language: String,
+    autoApplyScope: Boolean,
 ) {
     fun tr(zh: String, en: String) = if (language == "zh") zh else en
     var search by remember { mutableStateOf("") }
@@ -164,6 +179,7 @@ private fun AppsPage(
                 if (service != null) editGlobal = true
                 else Toast.makeText(context, tr("请先在 LSPosed 中启用模块", "Enable the module in LSPosed first"), Toast.LENGTH_SHORT).show()
             },
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(28.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
         ) {
@@ -188,6 +204,7 @@ private fun AppsPage(
 
         Spacer(Modifier.height(12.dp))
         Card(
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(28.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
         ) {
@@ -260,8 +277,7 @@ private fun AppsPage(
             subtitle = tr("作为未单独配置软件的默认规则", "Default rule for apps without an override"),
             initialRule = RouteStore.readGlobal(service.getRemotePreferences(RouteStore.PREFS)),
             language = language,
-            allowScopeRequest = false,
-            onSave = { rule, _ ->
+            onSave = { rule ->
                 RouteStore.writeGlobal(service.getRemotePreferences(RouteStore.PREFS), rule)
                 revision++
                 editGlobal = false
@@ -279,11 +295,10 @@ private fun AppsPage(
                 subtitle = app.packageName,
                 initialRule = RouteStore.read(remote, app.packageName),
                 language = language,
-                allowScopeRequest = true,
-                onSave = { rule, applyScope ->
+                onSave = { rule ->
                     RouteStore.write(remote, rule.copy(packageName = app.packageName))
                     revision++
-                    if (applyScope) requestAppScope(context, service, app.packageName, language)
+                    if (autoApplyScope) requestAppScope(context, service, app.packageName, language)
                     editing = null
                 },
                 onDismiss = { editing = null }
@@ -298,8 +313,10 @@ private fun AboutPage(
     service: XposedService?,
     language: String,
     dynamicColor: Boolean,
+    autoApplyScope: Boolean,
     onLanguageChange: (String) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
+    onAutoApplyScopeChange: (Boolean) -> Unit,
 ) {
     fun tr(zh: String, en: String) = if (language == "zh") zh else en
     var languageMenu by remember { mutableStateOf(false) }
@@ -309,7 +326,7 @@ private fun AboutPage(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Card(shape = RoundedCornerShape(28.dp)) {
+            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
                 Column(Modifier.padding(20.dp)) {
                     Text("MicRouter", style = MaterialTheme.typography.headlineMedium)
                     Spacer(Modifier.height(8.dp))
@@ -324,7 +341,7 @@ private fun AboutPage(
             }
         }
         item {
-            Card(shape = RoundedCornerShape(28.dp)) {
+            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
                 Column(Modifier.padding(20.dp)) {
                     Text(tr("设置", "Settings"), style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(12.dp))
@@ -360,11 +377,22 @@ private fun AboutPage(
                         }
                         Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
                     }
+                    HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.weight(1f)) {
+                            Text(tr("保存后申请 LSPosed 作用域", "Apply LSPosed scope after saving"), style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                tr("保存单个软件设置时自动申请该软件作用域。", "Automatically request scope for the app when saving its settings."),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Switch(checked = autoApplyScope, onCheckedChange = onAutoApplyScopeChange)
+                    }
                 }
             }
         }
         item {
-            Card(shape = RoundedCornerShape(28.dp)) {
+            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
                 Column(Modifier.padding(20.dp)) {
                     Text(tr("说明", "Notes"), style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(8.dp))
@@ -383,13 +411,11 @@ private fun RouteDialog(
     subtitle: String,
     initialRule: RouteRule,
     language: String,
-    allowScopeRequest: Boolean,
-    onSave: (RouteRule, Boolean) -> Unit,
+    onSave: (RouteRule) -> Unit,
     onDismiss: () -> Unit,
 ) {
     fun tr(zh: String, en: String) = if (language == "zh") zh else en
     var rule by remember(title, initialRule.toJson()) { mutableStateOf(initialRule) }
-    var applyScope by remember(title) { mutableStateOf(false) }
     val devices = remember(language) { currentInputs(context, language) }
 
     AlertDialog(
@@ -432,19 +458,9 @@ private fun RouteDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (allowScopeRequest) {
-                    HorizontalDivider()
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.weight(1f)) {
-                            Text(tr("保存后申请 LSPosed 作用域", "Apply LSPosed scope after saving"), style = MaterialTheme.typography.titleMedium)
-                            Text(tr("仅申请当前软件，不添加推荐软件。", "Request only this app; no recommended apps are added."), style = MaterialTheme.typography.bodySmall)
-                        }
-                        Switch(checked = applyScope, onCheckedChange = { applyScope = it })
-                    }
-                }
             }
         },
-        confirmButton = { Button(onClick = { onSave(rule, applyScope) }) { Text(tr("保存", "Save")) } },
+        confirmButton = { Button(onClick = { onSave(rule) }) { Text(tr("保存", "Save")) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("取消", "Cancel")) } }
     )
 }
