@@ -82,10 +82,10 @@ class ModuleMain : XposedModule() {
         else log(Log.INFO, TAG, "MediaRecorder preferred=${d.productName} accepted=${recorder.setPreferredDevice(d)}")
     }
 
-    private fun amplify(record: AudioRecord, args: Array<Any?>, count: Int, db: Float) {
+    private fun amplify(record: AudioRecord, args: List<Any?>, count: Int, db: Float) {
         val gain = 10.0.pow(db / 20.0).toFloat()
         val offset = (args.getOrNull(1) as? Int ?: 0).coerceAtLeast(0)
-        when (val buffer = args[0]) {
+        when (val buffer = args.getOrNull(0)) {
             is ShortArray -> {
                 val end = (offset + count).coerceAtMost(buffer.size)
                 for (i in offset until end) buffer[i] = (buffer[i] * gain).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
