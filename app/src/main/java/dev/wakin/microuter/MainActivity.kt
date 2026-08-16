@@ -104,6 +104,7 @@ private fun MicRouterUi(service: XposedService?) {
 
     MaterialTheme(colorScheme = colors) {
         Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 Column(
                     Modifier.padding(
@@ -125,7 +126,7 @@ private fun MicRouterUi(service: XposedService?) {
                 }
             },
             bottomBar = {
-                NavigationBar {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                     NavigationBarItem(
                         selected = page == MainPage.Apps,
                         onClick = { page = MainPage.Apps },
@@ -261,7 +262,8 @@ private fun AppsPage(
                         else Toast.makeText(context, tr("请先在 LSPosed 中启用模块", "Enable the module in LSPosed first"), Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp)
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -381,28 +383,59 @@ private fun AboutPage(
     fun tr(zh: String, en: String) = if (language == "zh") zh else en
     var languageMenu by remember { mutableStateOf(false) }
     var themeMenu by remember { mutableStateOf(false) }
+    val connected = service != null
 
     LazyColumn(
         modifier.padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
                 Column(Modifier.padding(20.dp)) {
                     Text("MicRouter", style = MaterialTheme.typography.headlineMedium)
                     Spacer(Modifier.height(8.dp))
                     Text(tr("基于 LSPosed/libxposed 的按软件麦克风路由模块。", "Per-app microphone routing based on LSPosed/libxposed."))
+                }
+            }
+        }
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (connected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
+                    contentColor = if (connected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
+                )
+            ) {
+                Column(Modifier.padding(20.dp)) {
+                    Text(tr("LSPosed 连接状态", "LSPosed connection"), style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        if (service == null) tr("LSPosed 服务：未连接", "LSPosed service: disconnected")
-                        else tr("LSPosed 服务：已连接", "LSPosed service: connected"),
-                        color = if (service == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                        if (connected) tr("已连接", "Connected") else tr("未连接", "Disconnected"),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (connected) {
+                            tr("libxposed 服务可用，软件设置可以正常读写。", "libxposed service is available and app settings can be read and written.")
+                        } else {
+                            tr("请确认模块已在 LSPosed 中启用并重新打开 MicRouter。", "Confirm the module is enabled in LSPosed, then reopen MicRouter.")
+                        },
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
             }
         }
         item {
-            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
                 Column(Modifier.padding(20.dp)) {
                     Text(tr("设置", "Settings"), style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(12.dp))
@@ -527,7 +560,11 @@ private fun AboutPage(
             }
         }
         item {
-            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
                 Column(Modifier.padding(20.dp)) {
                     Text(tr("说明", "Notes"), style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(8.dp))
@@ -703,6 +740,9 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             secondaryContainer = Color(0xFF33466A),
             tertiary = Color(0xFFE1BBDD),
             tertiaryContainer = Color(0xFF593F5B),
+            background = Color(0xFF10141C),
+            surface = Color(0xFF151A24),
+            surfaceVariant = Color(0xFF222A38),
         )
     } else {
         lightColorScheme(
@@ -712,6 +752,9 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             secondaryContainer = Color(0xFFD9E2FF),
             tertiary = Color(0xFF745470),
             tertiaryContainer = Color(0xFFFFD7F0),
+            background = Color(0xFFF5F8FF),
+            surface = Color(0xFFEEF3FE),
+            surfaceVariant = Color(0xFFE1EAF8),
         )
     }
     ThemeColor.Purple -> if (dark) {
@@ -722,6 +765,9 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             secondaryContainer = Color(0xFF4A4458),
             tertiary = Color(0xFFEFB8C8),
             tertiaryContainer = Color(0xFF633B48),
+            background = Color(0xFF17131D),
+            surface = Color(0xFF1D1824),
+            surfaceVariant = Color(0xFF2B2435),
         )
     } else {
         lightColorScheme(
@@ -731,6 +777,9 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             secondaryContainer = Color(0xFFE8DEF8),
             tertiary = Color(0xFF7D5260),
             tertiaryContainer = Color(0xFFFFD8E4),
+            background = Color(0xFFFBF7FF),
+            surface = Color(0xFFF5F0FC),
+            surfaceVariant = Color(0xFFECE3F5),
         )
     }
     ThemeColor.Green -> if (dark) {
@@ -741,6 +790,9 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             secondaryContainer = Color(0xFF354B3F),
             tertiary = Color(0xFFA5CDDF),
             tertiaryContainer = Color(0xFF244C5B),
+            background = Color(0xFF0D1713),
+            surface = Color(0xFF121D18),
+            surfaceVariant = Color(0xFF203029),
         )
     } else {
         lightColorScheme(
@@ -750,6 +802,9 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             secondaryContainer = Color(0xFFCFE9D9),
             tertiary = Color(0xFF3D6373),
             tertiaryContainer = Color(0xFFC1E8FB),
+            background = Color(0xFFF3FBF7),
+            surface = Color(0xFFECF6F0),
+            surfaceVariant = Color(0xFFDDECE4),
         )
     }
     ThemeColor.Orange -> if (dark) {
@@ -760,6 +815,9 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             secondaryContainer = Color(0xFF59422D),
             tertiary = Color(0xFFC3CA9E),
             tertiaryContainer = Color(0xFF42492B),
+            background = Color(0xFF1B140E),
+            surface = Color(0xFF211A13),
+            surfaceVariant = Color(0xFF33271B),
         )
     } else {
         lightColorScheme(
@@ -769,6 +827,9 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             secondaryContainer = Color(0xFFFFDCC0),
             tertiary = Color(0xFF5A6146),
             tertiaryContainer = Color(0xFFDEE6BF),
+            background = Color(0xFFFFF8F2),
+            surface = Color(0xFFFFF1E5),
+            surfaceVariant = Color(0xFFF5E3D3),
         )
     }
     ThemeColor.Rose -> if (dark) {
@@ -779,6 +840,9 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             secondaryContainer = Color(0xFF594047),
             tertiary = Color(0xFFF0BE95),
             tertiaryContainer = Color(0xFF5D421E),
+            background = Color(0xFF1C1216),
+            surface = Color(0xFF24171C),
+            surfaceVariant = Color(0xFF35232A),
         )
     } else {
         lightColorScheme(
@@ -788,6 +852,9 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             secondaryContainer = Color(0xFFFFD9E1),
             tertiary = Color(0xFF7C5735),
             tertiaryContainer = Color(0xFFFFDCBB),
+            background = Color(0xFFFFF7F9),
+            surface = Color(0xFFFFEEF2),
+            surfaceVariant = Color(0xFFF6E0E6),
         )
     }
 }
