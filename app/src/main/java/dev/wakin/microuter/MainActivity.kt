@@ -11,12 +11,16 @@ import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,8 +37,6 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -58,8 +60,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,7 +73,6 @@ import io.github.libxposed.service.XposedService
 
 private enum class MainPage { Microphone, About }
 private enum class AppearanceMode { Dynamic, Light, Dark }
-private enum class ThemeColor { Blue, Purple, Green, Orange, Rose }
 
 class MainActivity : ComponentActivity() {
     private var xposedService by mutableStateOf<XposedService?>(null)
@@ -103,11 +108,7 @@ private fun MicRouterUi(service: XposedService?) {
         )
     }
     var themeColor by remember {
-        mutableStateOf(
-            ThemeColor.entries.firstOrNull {
-                it.name.equals(uiPrefs.getString("theme_color", "blue"), ignoreCase = true)
-            } ?: ThemeColor.Blue,
-        )
+        mutableStateOf(ThemePalette.fromStoredValue(uiPrefs.getString("theme_color", "blue")))
     }
     var page by remember { mutableStateOf(MainPage.Microphone) }
 
@@ -212,7 +213,7 @@ private fun MicRouterUi(service: XposedService?) {
                     },
                     onThemeColorChange = {
                         themeColor = it
-                        uiPrefs.edit().putString("theme_color", it.name.lowercase()).apply()
+                        uiPrefs.edit().putString("theme_color", it.storageKey).apply()
                     },
                 )
             }
@@ -343,45 +344,22 @@ private fun AboutPage(
     language: String,
     dynamicColor: Boolean,
     appearanceMode: AppearanceMode,
-    themeColor: ThemeColor,
+    themeColor: ThemePalette,
     onLanguageChange: (String) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
     onAppearanceModeChange: (AppearanceMode) -> Unit,
-    onThemeColorChange: (ThemeColor) -> Unit,
+    onThemeColorChange: (ThemePalette) -> Unit,
 ) {
     fun tr(zh: String, en: String) = if (language == "zh") zh else en
     var languageMenu by remember { mutableStateOf(false) }
-    var themeMenu by remember { mutableStateOf(false) }
-    val connected = service != null
+    val dynamicActive = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (connected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
-                    contentColor = if (connected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer,
-                ),
-            ) {
-                Column(Modifier.padding(20.dp)) {
-                    Text(tr("LSPosed 连接状态", "LSPosed connection"), style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(8.dp))
-                    Text(if (connected) tr("已连接", "Connected") else tr("未连接", "Disconnected"), style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        if (connected) {
-                            tr("libxposed 服务可用，系统设置可以正常读写。", "The libxposed service is available and system settings can be read and written.")
-                        } else {
-                            tr("请确认模块已在 LSPosed 中启用并重新打开 MicRouter。", "Enable the module in LSPosed, then reopen MicRouter.")
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
+            FrameworkStatusCard(service = service, language = language)
         }
         item {
             Card(
@@ -389,90 +367,96 @@ private fun AboutPage(
                 shape = RoundedCornerShape(28.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             ) {
-                Column(Modifier.padding(20.dp)) {
-                    Text(tr("设置", "Settings"), style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.weight(1f)) {
-                            Text(tr("语言", "Language"), style = MaterialTheme.typography.titleMedium)
-                            Text(if (language == "zh") "简体中文" else "English", style = MaterialTheme.typography.bodySmall)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(tr("语言", "Language"), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (language == "zh") "简体中文" else "English",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Box {
+                        FilledTonalButton(onClick = { languageMenu = true }) {
+                            Text(if (language == "zh") "中文" else "English")
                         }
-                        Box {
-                            FilledTonalButton(onClick = { languageMenu = true }) {
-                                Text(if (language == "zh") "中文" else "English")
-                            }
-                            DropdownMenu(expanded = languageMenu, onDismissRequest = { languageMenu = false }) {
-                                DropdownMenuItem(text = { Text("简体中文") }, onClick = { onLanguageChange("zh"); languageMenu = false })
-                                DropdownMenuItem(text = { Text("English") }, onClick = { onLanguageChange("en"); languageMenu = false })
-                            }
+                        DropdownMenu(expanded = languageMenu, onDismissRequest = { languageMenu = false }) {
+                            DropdownMenuItem(text = { Text("简体中文") }, onClick = { onLanguageChange("zh"); languageMenu = false })
+                            DropdownMenuItem(text = { Text("English") }, onClick = { onLanguageChange("en"); languageMenu = false })
                         }
                     }
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Text(
+                    tr("主题", "Theme"),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    listOf(AppearanceMode.Light, AppearanceMode.Dark, AppearanceMode.Dynamic).forEach { mode ->
+                        AppearancePreviewTile(
+                            modifier = Modifier.weight(1f),
+                            mode = mode,
+                            selected = appearanceMode == mode,
+                            language = language,
+                            onClick = { onAppearanceModeChange(mode) },
+                        )
+                    }
+                }
 
-                    HorizontalDivider(Modifier.padding(vertical = 12.dp))
-                    Text(tr("深色模式", "Appearance"), style = MaterialTheme.typography.titleMedium)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(tr("动态色彩", "Dynamic color"), style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            tr("使用系统强调色", "Use the system accent colors"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = dynamicColor,
+                        onCheckedChange = onDynamicColorChange,
+                        enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
+                    )
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        tr("动态模式会跟随系统浅色或深色设置。", "Dynamic follows the system light or dark appearance."),
+                        tr("调色板", "Palette"),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                            tr("动态色彩需要 Android 12 或更高版本", "Dynamic color requires Android 12 or newer")
+                        } else if (dynamicActive) {
+                            tr("动态色彩开启时不可选择", "Unavailable while dynamic color is enabled")
+                        } else {
+                            themeColorName(themeColor, language)
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AppearanceMode.entries.forEach { mode ->
-                            FilterChip(
-                                selected = appearanceMode == mode,
-                                onClick = { onAppearanceModeChange(mode) },
-                                label = {
-                                    Text(
-                                        when (mode) {
-                                            AppearanceMode.Dynamic -> tr("动态", "Dynamic")
-                                            AppearanceMode.Light -> tr("浅色", "Light")
-                                            AppearanceMode.Dark -> tr("深色", "Dark")
-                                        },
-                                    )
-                                },
-                            )
-                        }
-                    }
-
-                    HorizontalDivider(Modifier.padding(vertical = 12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.weight(1f)) {
-                            Text(tr("动态取色", "Dynamic color"), style = MaterialTheme.typography.titleMedium)
-                            Text(tr("Android 12+ 从系统壁纸取色", "Use system wallpaper colors on Android 12+"), style = MaterialTheme.typography.bodySmall)
-                        }
-                        Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
-                    }
-
-                    if (!dynamicColor) {
-                        HorizontalDivider(Modifier.padding(vertical = 12.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.weight(1f)) {
-                                Text(tr("主题颜色", "Theme color"), style = MaterialTheme.typography.titleMedium)
-                                Text(themeColorName(themeColor, language), style = MaterialTheme.typography.bodySmall)
-                            }
-                            Box {
-                                FilledTonalButton(onClick = { themeMenu = true }) {
-                                    Surface(modifier = Modifier.size(18.dp), shape = CircleShape, color = themePreviewColor(themeColor)) {}
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(themeColorName(themeColor, language))
-                                }
-                                DropdownMenu(expanded = themeMenu, onDismissRequest = { themeMenu = false }) {
-                                    ThemeColor.entries.forEach { color ->
-                                        DropdownMenuItem(
-                                            text = {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Surface(modifier = Modifier.size(18.dp), shape = CircleShape, color = themePreviewColor(color)) {}
-                                                    Spacer(Modifier.width(10.dp))
-                                                    Text(themeColorName(color, language))
-                                                }
-                                            },
-                                            onClick = { onThemeColorChange(color); themeMenu = false },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    ThemePaletteGrid(
+                        selected = themeColor,
+                        enabled = !dynamicActive,
+                        language = language,
+                        onSelect = onThemeColorChange,
+                    )
                 }
             }
         }
@@ -492,6 +476,241 @@ private fun AboutPage(
             }
         }
         item { Spacer(Modifier.height(8.dp)) }
+    }
+}
+
+private data class FrameworkInfo(
+    val name: String,
+    val version: String,
+    val apiVersion: Int,
+)
+
+@Composable
+private fun FrameworkStatusCard(service: XposedService?, language: String) {
+    fun tr(zh: String, en: String) = if (language == "zh") zh else en
+    val connected = service != null
+    val info = remember(service) {
+        service?.let { boundService ->
+            runCatching {
+                FrameworkInfo(
+                    name = boundService.frameworkName,
+                    version = boundService.frameworkVersion,
+                    apiVersion = boundService.apiVersion,
+                )
+            }.getOrNull()
+        }
+    }
+    val container = if (connected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer
+    val content = if (connected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
+    val iconContainer = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+    val iconContent = if (connected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onError
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(34.dp),
+        colors = CardDefaults.cardColors(containerColor = container, contentColor = content),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(66.dp),
+                shape = CircleShape,
+                color = iconContainer,
+                contentColor = iconContent,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        if (connected) "✓" else "×",
+                        fontSize = 34.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            Spacer(Modifier.width(18.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (connected) tr("模块服务已连接", "Module service connected") else tr("模块服务未连接", "Module service disconnected"),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    when {
+                        !connected -> tr("请在 LSPosed 中启用模块并重新打开 MicRouter", "Enable the module in LSPosed, then reopen MicRouter")
+                        info != null -> {
+                            val framework = listOf(info.name, info.version).filter { it.isNotBlank() }.joinToString(" ")
+                            tr("已连接 $framework · API ${info.apiVersion}", "Connected to $framework · API ${info.apiVersion}")
+                        }
+                        else -> tr("已连接 LSPosed", "Connected to LSPosed")
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppearancePreviewTile(
+    modifier: Modifier,
+    mode: AppearanceMode,
+    selected: Boolean,
+    language: String,
+    onClick: () -> Unit,
+) {
+    fun tr(zh: String, en: String) = if (language == "zh") zh else en
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth().aspectRatio(0.72f),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            border = BorderStroke(
+                width = if (selected) 3.dp else 1.dp,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+            ),
+        ) {
+            AppearanceMiniature(mode)
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = selected, onClick = onClick)
+            Text(
+                when (mode) {
+                    AppearanceMode.Light -> tr("浅色", "Light")
+                    AppearanceMode.Dark -> tr("深色", "Dark")
+                    AppearanceMode.Dynamic -> tr("自动", "Auto")
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppearanceMiniature(mode: AppearanceMode) {
+    val lightBackground = Color(0xFFFFF8F7)
+    val lightSurface = Color(0xFFFFE7E4)
+    val darkBackground = Color(0xFF21191A)
+    val darkSurface = Color(0xFF342729)
+    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(22.dp))) {
+        when (mode) {
+            AppearanceMode.Light -> Box(Modifier.fillMaxSize().background(lightBackground)) {}
+            AppearanceMode.Dark -> Box(Modifier.fillMaxSize().background(darkBackground)) {}
+            AppearanceMode.Dynamic -> Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxHeight().background(lightBackground)) {}
+                Box(Modifier.weight(1f).fillMaxHeight().background(darkBackground)) {}
+            }
+        }
+        Column(Modifier.fillMaxSize().padding(10.dp)) {
+            Box(
+                Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(10.dp)).background(
+                    if (mode == AppearanceMode.Dark) darkSurface else lightSurface,
+                ),
+            ) {}
+            Spacer(Modifier.height(10.dp))
+            Box(Modifier.fillMaxWidth(0.72f).height(7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.55f))) {}
+            Spacer(Modifier.height(7.dp))
+            Box(Modifier.fillMaxWidth(0.52f).height(7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))) {}
+            Spacer(Modifier.height(7.dp))
+            Box(Modifier.fillMaxWidth(0.84f).height(7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary)) {}
+            Spacer(Modifier.weight(1f))
+            Row(
+                modifier = Modifier.fillMaxWidth().height(32.dp).clip(RoundedCornerShape(10.dp)).background(
+                    if (mode == AppearanceMode.Dark) darkSurface else lightSurface,
+                ).padding(5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(modifier = Modifier.size(22.dp), shape = CircleShape, color = MaterialTheme.colorScheme.primary) {}
+                Spacer(Modifier.width(6.dp))
+                Box(Modifier.weight(1f).height(16.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer)) {}
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemePaletteGrid(
+    selected: ThemePalette,
+    enabled: Boolean,
+    language: String,
+    onSelect: (ThemePalette) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        ThemePalette.entries.chunked(4).forEach { rowPalettes ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                rowPalettes.forEach { palette ->
+                    ThemePaletteTile(
+                        modifier = Modifier.weight(1f),
+                        palette = palette,
+                        selected = selected == palette,
+                        enabled = enabled,
+                        label = themeColorName(palette, language),
+                        onClick = { onSelect(palette) },
+                    )
+                }
+                repeat(4 - rowPalettes.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemePaletteTile(
+    modifier: Modifier,
+    palette: ThemePalette,
+    selected: Boolean,
+    enabled: Boolean,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .aspectRatio(1f)
+            .alpha(if (enabled) 1f else 0.38f)
+            .semantics { contentDescription = label },
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+        border = if (selected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            PaletteSwatch(palette)
+            if (selected) {
+                Surface(
+                    modifier = Modifier.size(28.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("✓", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaletteSwatch(palette: ThemePalette) {
+    val colors = themeSwatchColors(palette)
+    Column(Modifier.size(58.dp).clip(CircleShape)) {
+        Row(Modifier.weight(1f)) {
+            Box(Modifier.weight(1f).fillMaxHeight().background(colors[0])) {}
+            Box(Modifier.weight(1f).fillMaxHeight().background(colors[1])) {}
+        }
+        Row(Modifier.weight(1f)) {
+            Box(Modifier.weight(1f).fillMaxHeight().background(colors[2])) {}
+            Box(Modifier.weight(1f).fillMaxHeight().background(colors[3])) {}
+        }
     }
 }
 
@@ -576,24 +795,32 @@ private fun deviceTypeName(type: Int, language: String): String {
     }
 }
 
-private fun themeColorName(color: ThemeColor, language: String): String = when (color) {
-    ThemeColor.Blue -> if (language == "zh") "蓝色" else "Blue"
-    ThemeColor.Purple -> if (language == "zh") "紫色" else "Purple"
-    ThemeColor.Green -> if (language == "zh") "绿色" else "Green"
-    ThemeColor.Orange -> if (language == "zh") "橙色" else "Orange"
-    ThemeColor.Rose -> if (language == "zh") "玫红" else "Rose"
+private fun themeColorName(color: ThemePalette, language: String): String = when (color) {
+    ThemePalette.Green -> if (language == "zh") "绿色" else "Green"
+    ThemePalette.Teal -> if (language == "zh") "青绿" else "Teal"
+    ThemePalette.Cyan -> if (language == "zh") "青色" else "Cyan"
+    ThemePalette.Blue -> if (language == "zh") "蓝色" else "Blue"
+    ThemePalette.Indigo -> if (language == "zh") "靛蓝" else "Indigo"
+    ThemePalette.Purple -> if (language == "zh") "紫色" else "Purple"
+    ThemePalette.Lavender -> if (language == "zh") "薰衣草" else "Lavender"
+    ThemePalette.Rose -> if (language == "zh") "玫红" else "Rose"
+    ThemePalette.Orange -> if (language == "zh") "橙色" else "Orange"
+    ThemePalette.Sand -> if (language == "zh") "沙金" else "Sand"
+    ThemePalette.Lime -> if (language == "zh") "青柠" else "Lime"
 }
 
-private fun themePreviewColor(color: ThemeColor): Color = when (color) {
-    ThemeColor.Blue -> Color(0xFF0B57D0)
-    ThemeColor.Purple -> Color(0xFF6750A4)
-    ThemeColor.Green -> Color(0xFF006C4C)
-    ThemeColor.Orange -> Color(0xFF8D4E00)
-    ThemeColor.Rose -> Color(0xFF9A405C)
+private fun themeSwatchColors(color: ThemePalette): List<Color> {
+    val scheme = customColorScheme(color, dark = false)
+    return listOf(
+        scheme.primaryContainer,
+        scheme.tertiaryContainer,
+        scheme.secondary,
+        scheme.surfaceVariant,
+    )
 }
 
-private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = when (color) {
-    ThemeColor.Blue -> if (dark) {
+private fun customColorScheme(color: ThemePalette, dark: Boolean): ColorScheme = when (color) {
+    ThemePalette.Blue -> if (dark) {
         darkColorScheme(
             primary = Color(0xFFA8C7FA),
             primaryContainer = Color(0xFF0842A0),
@@ -618,7 +845,7 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             surfaceVariant = Color(0xFFE1EAF8),
         )
     }
-    ThemeColor.Purple -> if (dark) {
+    ThemePalette.Purple -> if (dark) {
         darkColorScheme(
             primary = Color(0xFFD0BCFF),
             primaryContainer = Color(0xFF4F378B),
@@ -643,7 +870,7 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             surfaceVariant = Color(0xFFECE3F5),
         )
     }
-    ThemeColor.Green -> if (dark) {
+    ThemePalette.Green -> if (dark) {
         darkColorScheme(
             primary = Color(0xFF6FDBAF),
             primaryContainer = Color(0xFF005138),
@@ -668,7 +895,7 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             surfaceVariant = Color(0xFFDDECE4),
         )
     }
-    ThemeColor.Orange -> if (dark) {
+    ThemePalette.Orange -> if (dark) {
         darkColorScheme(
             primary = Color(0xFFFFB870),
             primaryContainer = Color(0xFF6B3900),
@@ -693,7 +920,7 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             surfaceVariant = Color(0xFFF5E3D3),
         )
     }
-    ThemeColor.Rose -> if (dark) {
+    ThemePalette.Rose -> if (dark) {
         darkColorScheme(
             primary = Color(0xFFFFB1C5),
             primaryContainer = Color(0xFF7C2944),
@@ -716,6 +943,156 @@ private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = w
             background = Color(0xFFFFF7F9),
             surface = Color(0xFFFFEEF2),
             surfaceVariant = Color(0xFFF6E0E6),
+        )
+    }
+    ThemePalette.Teal -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFF7ADBCB),
+            primaryContainer = Color(0xFF005047),
+            secondary = Color(0xFFB1CCC5),
+            secondaryContainer = Color(0xFF334B46),
+            tertiary = Color(0xFFA5CDD7),
+            tertiaryContainer = Color(0xFF244C55),
+            background = Color(0xFF0D1716),
+            surface = Color(0xFF121D1B),
+            surfaceVariant = Color(0xFF20302D),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF006B5F),
+            primaryContainer = Color(0xFF9EF2E2),
+            secondary = Color(0xFF4A635D),
+            secondaryContainer = Color(0xFFCCE8E0),
+            tertiary = Color(0xFF3F6370),
+            tertiaryContainer = Color(0xFFC3E8F7),
+            background = Color(0xFFF3FBF8),
+            surface = Color(0xFFECF7F3),
+            surfaceVariant = Color(0xFFDDECE7),
+        )
+    }
+    ThemePalette.Cyan -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFF53D7F2),
+            primaryContainer = Color(0xFF004E5D),
+            secondary = Color(0xFFB1CBD1),
+            secondaryContainer = Color(0xFF334A50),
+            tertiary = Color(0xFFC1C4EB),
+            tertiaryContainer = Color(0xFF404563),
+            background = Color(0xFF0D171A),
+            surface = Color(0xFF121D20),
+            surfaceVariant = Color(0xFF203034),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF00677A),
+            primaryContainer = Color(0xFFA9EDFF),
+            secondary = Color(0xFF4A6268),
+            secondaryContainer = Color(0xFFCDE7ED),
+            tertiary = Color(0xFF5A5D7A),
+            tertiaryContainer = Color(0xFFE0E0FF),
+            background = Color(0xFFF2FAFD),
+            surface = Color(0xFFEBF6F9),
+            surfaceVariant = Color(0xFFDDEBF0),
+        )
+    }
+    ThemePalette.Indigo -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFFB9C3FF),
+            primaryContainer = Color(0xFF273989),
+            secondary = Color(0xFFC3C6DD),
+            secondaryContainer = Color(0xFF44475B),
+            tertiary = Color(0xFFE5BAD7),
+            tertiaryContainer = Color(0xFF5B3F54),
+            background = Color(0xFF12131D),
+            surface = Color(0xFF181923),
+            surfaceVariant = Color(0xFF272936),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF3F51A2),
+            primaryContainer = Color(0xFFDDE1FF),
+            secondary = Color(0xFF595E72),
+            secondaryContainer = Color(0xFFDDE1F9),
+            tertiary = Color(0xFF74546E),
+            tertiaryContainer = Color(0xFFFFD7F4),
+            background = Color(0xFFF8F7FF),
+            surface = Color(0xFFF1F0FA),
+            surfaceVariant = Color(0xFFE5E5F1),
+        )
+    }
+    ThemePalette.Lavender -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFFDDB8F7),
+            primaryContainer = Color(0xFF573A75),
+            secondary = Color(0xFFD0C1D4),
+            secondaryContainer = Color(0xFF4B4350),
+            tertiary = Color(0xFFF3B7C0),
+            tertiaryContainer = Color(0xFF623D45),
+            background = Color(0xFF19131D),
+            surface = Color(0xFF201824),
+            surfaceVariant = Color(0xFF302638),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF71548F),
+            primaryContainer = Color(0xFFF0DBFF),
+            secondary = Color(0xFF655A6B),
+            secondaryContainer = Color(0xFFEBDFF0),
+            tertiary = Color(0xFF805158),
+            tertiaryContainer = Color(0xFFFFD9DD),
+            background = Color(0xFFFFF7FF),
+            surface = Color(0xFFF8EFFB),
+            surfaceVariant = Color(0xFFEEE2F1),
+        )
+    }
+    ThemePalette.Sand -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFFEBC16C),
+            primaryContainer = Color(0xFF5B4307),
+            secondary = Color(0xFFD6C6A1),
+            secondaryContainer = Color(0xFF4C4632),
+            tertiary = Color(0xFFA8CFA5),
+            tertiaryContainer = Color(0xFF304F31),
+            background = Color(0xFF1A160D),
+            surface = Color(0xFF211C12),
+            surfaceVariant = Color(0xFF332C1D),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF785A1E),
+            primaryContainer = Color(0xFFFFDEA0),
+            secondary = Color(0xFF6B5D3F),
+            secondaryContainer = Color(0xFFF4E1BB),
+            tertiary = Color(0xFF4A6545),
+            tertiaryContainer = Color(0xFFCCEBC3),
+            background = Color(0xFFFFF9EF),
+            surface = Color(0xFFFFF2DD),
+            surfaceVariant = Color(0xFFF0E4CE),
+        )
+    }
+    ThemePalette.Lime -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFFBEDC68),
+            primaryContainer = Color(0xFF414D00),
+            secondary = Color(0xFFC7CAA8),
+            secondaryContainer = Color(0xFF474A31),
+            tertiary = Color(0xFFA1D0C1),
+            tertiaryContainer = Color(0xFF284F46),
+            background = Color(0xFF15170D),
+            surface = Color(0xFF1B1D12),
+            surfaceVariant = Color(0xFF2A2F1D),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF566500),
+            primaryContainer = Color(0xFFD8EF7D),
+            secondary = Color(0xFF5E6145),
+            secondaryContainer = Color(0xFFE4E7C3),
+            tertiary = Color(0xFF3A665B),
+            tertiaryContainer = Color(0xFFBCEBDD),
+            background = Color(0xFFF9FBEF),
+            surface = Color(0xFFF2F5E7),
+            surfaceVariant = Color(0xFFE6EAD4),
         )
     }
 }
