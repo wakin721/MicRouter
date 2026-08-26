@@ -54,4 +54,7 @@ dependencies {
 
     compileOnly("io.github.libxposed:api:101.0.1")
     implementation("io.github.libxposed:service:101.0.0")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20250517")
 }

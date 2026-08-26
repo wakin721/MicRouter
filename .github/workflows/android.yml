@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'codex/**' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -27,6 +27,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.13'
+
+      - name: Run unit tests
+        run: gradle --no-daemon :app:testDebugUnitTest
 
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
