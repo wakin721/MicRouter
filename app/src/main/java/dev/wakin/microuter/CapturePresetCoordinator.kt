@@ -21,11 +21,13 @@ class CapturePresetCoordinator<T>(
         val successful = mutableListOf<Int>()
         val failed = mutableListOf<Int>()
         CapturePresets.STANDARD.forEach { preset ->
-            val accepted = if (device == null) {
-                backend.clear(preset)
-            } else {
-                backend.prefer(preset, device)
-            }
+            val accepted = runCatching {
+                if (device == null) {
+                    backend.clear(preset)
+                } else {
+                    backend.prefer(preset, device)
+                }
+            }.getOrDefault(false)
             if (accepted) successful += preset else failed += preset
         }
         return CapturePresetApplyReport(successful, failed)
