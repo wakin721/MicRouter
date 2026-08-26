@@ -1,6 +1,8 @@
 package dev.wakin.microuter
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ThemeCatalogTest {
@@ -36,5 +38,19 @@ class ThemeCatalogTest {
     @Test
     fun unknownStoredPaletteFallsBackToBlue() {
         assertEquals(ThemePalette.Blue, ThemePalette.fromStoredValue("unknown"))
+    }
+
+    @Test
+    fun dynamicColorOnlyActivatesWhenRequestedOnAndroid12OrNewer() {
+        assertFalse(ThemeSettingsPolicy.dynamicColorActive(requested = true, sdkInt = 30))
+        assertFalse(ThemeSettingsPolicy.dynamicColorActive(requested = false, sdkInt = 31))
+        assertTrue(ThemeSettingsPolicy.dynamicColorActive(requested = true, sdkInt = 31))
+    }
+
+    @Test
+    fun paletteSelectionIsDisabledOnlyWhileDynamicColorIsActuallyActive() {
+        assertTrue(ThemeSettingsPolicy.paletteSelectionEnabled(dynamicRequested = true, sdkInt = 30))
+        assertTrue(ThemeSettingsPolicy.paletteSelectionEnabled(dynamicRequested = false, sdkInt = 31))
+        assertFalse(ThemeSettingsPolicy.paletteSelectionEnabled(dynamicRequested = true, sdkInt = 31))
     }
 }
