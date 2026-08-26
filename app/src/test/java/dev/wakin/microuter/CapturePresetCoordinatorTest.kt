@@ -6,6 +6,19 @@ import org.junit.Test
 
 class CapturePresetCoordinatorTest {
     @Test
+    fun topLevelRoutingTaskReportsFailureWithoutRethrowing() {
+        var observed: Throwable? = null
+        val failure = IllegalStateException("vendor audio failure")
+
+        ExceptionIsolatingTask(
+            action = { throw failure },
+            onFailure = { observed = it },
+        ).run()
+
+        assertEquals(failure, observed)
+    }
+
+    @Test
     fun selectedDeviceVisitsEveryPresetAndReportsRejectedPreset() {
         val backend = RecordingBackend(rejectedPreset = 7)
 

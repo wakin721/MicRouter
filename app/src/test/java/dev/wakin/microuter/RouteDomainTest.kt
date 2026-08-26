@@ -13,6 +13,15 @@ class RouteDomainTest {
     }
 
     @Test
+    fun invalidLegacyDeviceTypeNormalizesToSystemDefault() {
+        val route = SystemRoute.fromJson(
+            """{"enabled":true,"deviceType":-1,"deviceName":"stale"}""",
+        )
+
+        assertEquals(SystemRoute.systemDefault(), route)
+    }
+
+    @Test
     fun deviceFactoryCopiesStableMicrophoneIdentity() {
         val device = InputDeviceIdentity(
             type = 15,
