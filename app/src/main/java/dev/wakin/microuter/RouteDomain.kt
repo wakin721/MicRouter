@@ -34,6 +34,19 @@ data class SystemRoute(
         .toString()
 
     companion object {
+        fun systemDefault(): SystemRoute = SystemRoute()
+
+        fun fromDevice(device: InputDeviceIdentity): SystemRoute = SystemRoute(
+            enabled = true,
+            deviceType = device.type,
+            deviceAddress = device.address,
+            deviceIdHint = device.id,
+            microphoneDescription = device.microphoneDescription,
+            microphoneGroup = device.microphoneGroup,
+            microphoneIndex = device.microphoneIndex,
+            deviceName = device.name,
+        )
+
         fun fromJson(raw: String?): SystemRoute {
             if (raw.isNullOrBlank()) return SystemRoute()
             return runCatching {
