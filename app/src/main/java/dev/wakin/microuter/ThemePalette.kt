@@ -18,3 +18,13 @@ enum class ThemePalette(val storageKey: String) {
             entries.firstOrNull { it.storageKey.equals(value, ignoreCase = true) } ?: Blue
     }
 }
+
+object ThemeSettingsPolicy {
+    private const val ANDROID_12_SDK = 31
+
+    fun dynamicColorActive(requested: Boolean, sdkInt: Int): Boolean =
+        requested && sdkInt >= ANDROID_12_SDK
+
+    fun paletteSelectionEnabled(dynamicRequested: Boolean, sdkInt: Int): Boolean =
+        !dynamicColorActive(dynamicRequested, sdkInt)
+}

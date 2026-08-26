@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
@@ -56,6 +58,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -64,12 +67,15 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.libxposed.service.XposedService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private enum class MainPage { Microphone, About }
 private enum class AppearanceMode { Dynamic, Light, Dark }
@@ -118,7 +124,7 @@ private fun MicRouterUi(service: XposedService?) {
         AppearanceMode.Light -> false
         AppearanceMode.Dark -> true
     }
-    val colors = if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    val colors = if (ThemeSettingsPolicy.dynamicColorActive(dynamicColor, Build.VERSION.SDK_INT)) {
         if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
     } else {
         customColorScheme(themeColor, dark)
@@ -352,7 +358,8 @@ private fun AboutPage(
 ) {
     fun tr(zh: String, en: String) = if (language == "zh") zh else en
     var languageMenu by remember { mutableStateOf(false) }
-    val dynamicActive = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val dynamicActive = ThemeSettingsPolicy.dynamicColorActive(dynamicColor, Build.VERSION.SDK_INT)
+    val paletteSelectionEnabled = ThemeSettingsPolicy.paletteSelectionEnabled(dynamicColor, Build.VERSION.SDK_INT)
 
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -400,7 +407,7 @@ private fun AboutPage(
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().selectableGroup(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     listOf(AppearanceMode.Light, AppearanceMode.Dark, AppearanceMode.Dynamic).forEach { mode ->
@@ -427,7 +434,7 @@ private fun AboutPage(
                         )
                     }
                     Switch(
-                        checked = dynamicColor,
+                        checked = dynamicActive,
                         onCheckedChange = onDynamicColorChange,
                         enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
                     )
@@ -441,19 +448,26 @@ private fun AboutPage(
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                            tr("动态色彩需要 Android 12 或更高版本", "Dynamic color requires Android 12 or newer")
-                        } else if (dynamicActive) {
-                            tr("动态色彩开启时不可选择", "Unavailable while dynamic color is enabled")
-                        } else {
-                            themeColorName(themeColor, language)
-                        },
+                        tr("当前选择：${themeColorName(themeColor, language)}", "Selected: ${themeColorName(themeColor, language)}"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                        Text(
+                            tr("动态色彩需要 Android 12 或更高版本", "Dynamic color requires Android 12 or newer"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else if (dynamicActive) {
+                        Text(
+                            tr("动态色彩开启时不可选择手动色盘", "Manual palettes are unavailable while dynamic color is enabled"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     ThemePaletteGrid(
                         selected = themeColor,
-                        enabled = !dynamicActive,
+                        enabled = paletteSelectionEnabled,
                         language = language,
                         onSelect = onThemeColorChange,
                     )
@@ -485,19 +499,35 @@ private data class FrameworkInfo(
     val apiVersion: Int,
 )
 
+private sealed interface FrameworkInfoState {
+    data object Disconnected : FrameworkInfoState
+    data object Loading : FrameworkInfoState
+    data object Unavailable : FrameworkInfoState
+    data class Available(val info: FrameworkInfo) : FrameworkInfoState
+}
+
 @Composable
 private fun FrameworkStatusCard(service: XposedService?, language: String) {
     fun tr(zh: String, en: String) = if (language == "zh") zh else en
     val connected = service != null
-    val info = remember(service) {
-        service?.let { boundService ->
-            runCatching {
-                FrameworkInfo(
-                    name = boundService.frameworkName,
-                    version = boundService.frameworkVersion,
-                    apiVersion = boundService.apiVersion,
-                )
-            }.getOrNull()
+    val infoState by produceState<FrameworkInfoState>(
+        initialValue = if (service == null) FrameworkInfoState.Disconnected else FrameworkInfoState.Loading,
+        key1 = service,
+    ) {
+        value = if (service == null) {
+            FrameworkInfoState.Disconnected
+        } else {
+            withContext(Dispatchers.IO) {
+                runCatching<FrameworkInfoState> {
+                    FrameworkInfoState.Available(
+                        FrameworkInfo(
+                            name = service.frameworkName,
+                            version = service.frameworkVersion,
+                            apiVersion = service.apiVersion,
+                        ),
+                    )
+                }.getOrElse { FrameworkInfoState.Unavailable }
+            }
         }
     }
     val container = if (connected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer
@@ -537,13 +567,23 @@ private fun FrameworkStatusCard(service: XposedService?, language: String) {
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    when {
-                        !connected -> tr("请在 LSPosed 中启用模块并重新打开 MicRouter", "Enable the module in LSPosed, then reopen MicRouter")
-                        info != null -> {
-                            val framework = listOf(info.name, info.version).filter { it.isNotBlank() }.joinToString(" ")
-                            tr("已连接 $framework · API ${info.apiVersion}", "Connected to $framework · API ${info.apiVersion}")
+                    when (val state = infoState) {
+                        FrameworkInfoState.Disconnected -> tr(
+                            "请在 LSPosed 中启用模块并重新打开 MicRouter",
+                            "Enable the module in LSPosed, then reopen MicRouter",
+                        )
+                        FrameworkInfoState.Loading -> tr("正在读取框架信息…", "Reading framework information…")
+                        is FrameworkInfoState.Available -> {
+                            val framework = listOf(state.info.name, state.info.version)
+                                .filter { it.isNotBlank() }
+                                .joinToString(" ")
+                                .ifBlank { "LSPosed" }
+                            tr(
+                                "已连接 $framework · API ${state.info.apiVersion}",
+                                "Connected to $framework · API ${state.info.apiVersion}",
+                            )
                         }
-                        else -> tr("已连接 LSPosed", "Connected to LSPosed")
+                        FrameworkInfoState.Unavailable -> tr("已连接 LSPosed", "Connected to LSPosed")
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -561,10 +601,23 @@ private fun AppearancePreviewTile(
     onClick: () -> Unit,
 ) {
     fun tr(zh: String, en: String) = if (language == "zh") zh else en
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+    val label = when (mode) {
+        AppearanceMode.Light -> tr("浅色", "Light")
+        AppearanceMode.Dark -> tr("深色", "Dark")
+        AppearanceMode.Dynamic -> tr("自动", "Auto")
+    }
+    Column(
+        modifier = modifier
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = onClick,
+            )
+            .semantics(mergeDescendants = true) { contentDescription = label },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Surface(
-            onClick = onClick,
-            modifier = Modifier.fillMaxWidth().aspectRatio(0.72f),
+            modifier = Modifier.fillMaxWidth().aspectRatio(0.70f),
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
             border = BorderStroke(
@@ -576,13 +629,9 @@ private fun AppearancePreviewTile(
         }
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = selected, onClick = onClick)
+            RadioButton(selected = selected, onClick = null)
             Text(
-                when (mode) {
-                    AppearanceMode.Light -> tr("浅色", "Light")
-                    AppearanceMode.Dark -> tr("深色", "Dark")
-                    AppearanceMode.Dynamic -> tr("自动", "Auto")
-                },
+                label,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
             )
@@ -605,28 +654,28 @@ private fun AppearanceMiniature(mode: AppearanceMode) {
                 Box(Modifier.weight(1f).fillMaxHeight().background(darkBackground)) {}
             }
         }
-        Column(Modifier.fillMaxSize().padding(10.dp)) {
+        Column(Modifier.fillMaxSize().padding(8.dp)) {
             Box(
-                Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(10.dp)).background(
+                Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(9.dp)).background(
                     if (mode == AppearanceMode.Dark) darkSurface else lightSurface,
                 ),
             ) {}
-            Spacer(Modifier.height(10.dp))
-            Box(Modifier.fillMaxWidth(0.72f).height(7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.55f))) {}
             Spacer(Modifier.height(7.dp))
-            Box(Modifier.fillMaxWidth(0.52f).height(7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))) {}
-            Spacer(Modifier.height(7.dp))
-            Box(Modifier.fillMaxWidth(0.84f).height(7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary)) {}
+            Box(Modifier.fillMaxWidth(0.72f).height(5.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.55f))) {}
+            Spacer(Modifier.height(5.dp))
+            Box(Modifier.fillMaxWidth(0.52f).height(5.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))) {}
+            Spacer(Modifier.height(5.dp))
+            Box(Modifier.fillMaxWidth(0.84f).height(5.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary)) {}
             Spacer(Modifier.weight(1f))
             Row(
-                modifier = Modifier.fillMaxWidth().height(32.dp).clip(RoundedCornerShape(10.dp)).background(
+                modifier = Modifier.fillMaxWidth().height(26.dp).clip(RoundedCornerShape(9.dp)).background(
                     if (mode == AppearanceMode.Dark) darkSurface else lightSurface,
-                ).padding(5.dp),
+                ).padding(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(modifier = Modifier.size(22.dp), shape = CircleShape, color = MaterialTheme.colorScheme.primary) {}
-                Spacer(Modifier.width(6.dp))
-                Box(Modifier.weight(1f).height(16.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer)) {}
+                Surface(modifier = Modifier.size(18.dp), shape = CircleShape, color = MaterialTheme.colorScheme.primary) {}
+                Spacer(Modifier.width(5.dp))
+                Box(Modifier.weight(1f).height(13.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer)) {}
             }
         }
     }
@@ -639,7 +688,10 @@ private fun ThemePaletteGrid(
     language: String,
     onSelect: (ThemePalette) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(
+        modifier = Modifier.selectableGroup(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         ThemePalette.entries.chunked(4).forEach { rowPalettes ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -670,32 +722,47 @@ private fun ThemePaletteTile(
     label: String,
     onClick: () -> Unit,
 ) {
-    Surface(
-        onClick = onClick,
-        enabled = enabled,
+    Column(
         modifier = modifier
-            .aspectRatio(1f)
-            .alpha(if (enabled) 1f else 0.38f)
-            .semantics { contentDescription = label },
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-        border = if (selected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
+            .selectable(
+                selected = selected,
+                enabled = enabled,
+                role = Role.RadioButton,
+                onClick = onClick,
+            )
+            .semantics(mergeDescendants = true) { contentDescription = label },
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            PaletteSwatch(palette)
-            if (selected) {
-                Surface(
-                    modifier = Modifier.size(28.dp),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                    contentColor = MaterialTheme.colorScheme.primary,
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("✓", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Surface(
+            modifier = Modifier.fillMaxWidth().aspectRatio(1f).alpha(if (enabled) 1f else 0.38f),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+            border = if (selected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                PaletteSwatch(palette)
+                if (selected) {
+                    Surface(
+                        modifier = Modifier.size(28.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                        contentColor = MaterialTheme.colorScheme.primary,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("✓", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        }
                     }
                 }
             }
         }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            label,
+            maxLines = 1,
+            fontSize = 11.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.55f),
+        )
     }
 }
 
