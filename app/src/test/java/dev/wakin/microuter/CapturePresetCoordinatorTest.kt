@@ -30,19 +30,36 @@ class CapturePresetCoordinatorTest {
         assertEquals(emptyList<Int>(), report.failedPresets)
     }
 
+    @Test
+    fun backendExceptionFailsOnePresetWithoutStoppingLaterPresets() {
+        val backend = RecordingBackend(throwingPreset = 6)
+
+        val report = CapturePresetCoordinator(backend).apply("usb")
+
+        assertArrayEquals(CapturePresets.STANDARD, backend.preferred.toIntArray())
+        assertEquals(listOf(6), report.failedPresets)
+        assertEquals(
+            CapturePresets.STANDARD.filterNot { it == 6 },
+            report.successfulPresets,
+        )
+    }
+
     private class RecordingBackend(
         private val rejectedPreset: Int? = null,
+        private val throwingPreset: Int? = null,
     ) : CapturePresetBackend<String> {
         val preferred = mutableListOf<Int>()
         val cleared = mutableListOf<Int>()
 
         override fun prefer(preset: Int, device: String): Boolean {
             preferred += preset
+            if (preset == throwingPreset) error("unsupported preset $preset")
             return preset != rejectedPreset
         }
 
         override fun clear(preset: Int): Boolean {
             cleared += preset
+            if (preset == throwingPreset) error("unsupported preset $preset")
             return preset != rejectedPreset
         }
     }
