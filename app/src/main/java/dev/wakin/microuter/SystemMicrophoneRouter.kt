@@ -66,7 +66,7 @@ class SystemMicrophoneRouter(
             .filter { it.isSource }
         val microphones = runCatching { manager.microphones }.getOrDefault(emptyList())
         val identities = inputs.associateWith { it.toIdentity(microphones) }
-        val resolvedIdentity = InputDeviceResolver.resolve(route, identities.values)
+        val resolvedIdentity = InputDeviceResolver.resolve(route, identities.values.toList())
         val resolvedDevice = identities.entries.firstOrNull { it.value == resolvedIdentity }?.key
 
         if (route.enabled && resolvedDevice == null) {
@@ -93,7 +93,7 @@ class SystemMicrophoneRouter(
     }
 
     private fun AudioDeviceInfo.toIdentity(microphones: List<MicrophoneInfo>): InputDeviceIdentity {
-        val microphone = microphones.firstOrNull { it.id == id.toString() }
+        val microphone = microphones.firstOrNull { it.id == id }
             ?: microphones.firstOrNull { it.type == type && it.address == address }
         return InputDeviceIdentity(
             type = type,
