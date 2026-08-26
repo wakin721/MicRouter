@@ -39,6 +39,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -59,7 +60,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.libxposed.service.XposedService
 
 private enum class MainPage { Microphone, About }
@@ -122,6 +125,13 @@ private fun MicRouterUi(service: XposedService?) {
     fun tr(zh: String, en: String) = if (language == "zh") zh else en
 
     MaterialTheme(colorScheme = colors) {
+        val navigationItemColors = NavigationBarItemDefaults.colors(
+            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            selectedTextColor = MaterialTheme.colorScheme.primary,
+            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
@@ -140,18 +150,36 @@ private fun MicRouterUi(service: XposedService?) {
                 }
             },
             bottomBar = {
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    tonalElevation = 6.dp,
+                ) {
                     NavigationBarItem(
                         selected = page == MainPage.Microphone,
                         onClick = { page = MainPage.Microphone },
-                        icon = { Text("◉") },
+                        icon = {
+                            Text(
+                                "◉",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Black,
+                            )
+                        },
                         label = { Text(tr("麦克风", "Microphone")) },
+                        colors = navigationItemColors,
                     )
                     NavigationBarItem(
                         selected = page == MainPage.About,
                         onClick = { page = MainPage.About },
-                        icon = { Text("ⓘ") },
+                        icon = {
+                            Text(
+                                "ⓘ",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Black,
+                            )
+                        },
                         label = { Text(tr("关于", "About")) },
+                        colors = navigationItemColors,
                     )
                 }
             },
@@ -239,27 +267,6 @@ private fun MicrophonePage(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            StatusCard(
-                connected = service != null,
-                supported = supported,
-                language = language,
-            )
-        }
-        item {
-            Text(
-                tr("选择全局麦克风", "Choose the global microphone"),
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Text(
-                tr(
-                    "选择后会通过 system_server 应用于标准录音来源，无需逐个选择应用。",
-                    "The choice is applied to standard capture sources through system_server, without selecting individual apps.",
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        item {
             MicrophoneChoiceCard(
                 name = tr("系统默认", "System default"),
                 details = tr("清除 MicRouter 的全局设备偏好", "Clear MicRouter's global device preference"),
@@ -298,36 +305,6 @@ private fun MicrophonePage(
             }
         }
         item { Spacer(Modifier.height(8.dp)) }
-    }
-}
-
-@Composable
-private fun StatusCard(connected: Boolean, supported: Boolean, language: String) {
-    fun tr(zh: String, en: String) = if (language == "zh") zh else en
-    val ready = connected && supported
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (ready) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
-            contentColor = if (ready) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer,
-        ),
-    ) {
-        Column(Modifier.padding(20.dp)) {
-            Text(
-                if (ready) tr("全局路由已就绪", "Global routing is ready") else tr("暂时无法选择", "Selection unavailable"),
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                when {
-                    !supported -> tr("全局麦克风路由需要 Android 11 或更高版本。", "Global microphone routing requires Android 11 or newer.")
-                    !connected -> tr("请确认模块已在 LSPosed 中启用并重新打开 MicRouter。", "Enable the module in LSPosed, then reopen MicRouter.")
-                    else -> tr("选择会写入唯一的系统级麦克风设置。", "Your choice is stored as the single system-wide microphone setting.")
-                },
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
     }
 }
 
@@ -381,19 +358,6 @@ private fun AboutPage(
         modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            ) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("MicRouter", style = MaterialTheme.typography.headlineMedium)
-                    Spacer(Modifier.height(8.dp))
-                    Text(tr("基于 LSPosed/libxposed 的系统级麦克风路由模块。", "System-wide microphone routing based on LSPosed/libxposed."))
-                }
-            }
-        }
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
