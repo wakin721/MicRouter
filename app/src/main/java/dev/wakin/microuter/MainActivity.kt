@@ -628,35 +628,130 @@ private fun themePreviewColor(color: ThemeColor): Color = when (color) {
     ThemeColor.Rose -> Color(0xFF9A405C)
 }
 
-private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme {
-    val primary = themePreviewColor(color)
-    return if (dark) {
+private fun customColorScheme(color: ThemeColor, dark: Boolean): ColorScheme = when (color) {
+    ThemeColor.Blue -> if (dark) {
         darkColorScheme(
-            primary = when (color) {
-                ThemeColor.Blue -> Color(0xFFA8C7FA)
-                ThemeColor.Purple -> Color(0xFFD0BCFF)
-                ThemeColor.Green -> Color(0xFF6FDBAF)
-                ThemeColor.Orange -> Color(0xFFFFB870)
-                ThemeColor.Rose -> Color(0xFFFFB1C5)
-            },
-            primaryContainer = primary,
+            primary = Color(0xFFA8C7FA),
+            primaryContainer = Color(0xFF0842A0),
+            secondary = Color(0xFFB9C6E4),
+            secondaryContainer = Color(0xFF33466A),
+            tertiary = Color(0xFFE1BBDD),
+            tertiaryContainer = Color(0xFF593F5B),
             background = Color(0xFF10141C),
             surface = Color(0xFF151A24),
             surfaceVariant = Color(0xFF222A38),
         )
     } else {
         lightColorScheme(
-            primary = primary,
-            primaryContainer = when (color) {
-                ThemeColor.Blue -> Color(0xFFD3E3FD)
-                ThemeColor.Purple -> Color(0xFFEADDFF)
-                ThemeColor.Green -> Color(0xFF8BF8C8)
-                ThemeColor.Orange -> Color(0xFFFFDCC0)
-                ThemeColor.Rose -> Color(0xFFFFD9E1)
-            },
+            primary = Color(0xFF0B57D0),
+            primaryContainer = Color(0xFFD3E3FD),
+            secondary = Color(0xFF475D92),
+            secondaryContainer = Color(0xFFD9E2FF),
+            tertiary = Color(0xFF745470),
+            tertiaryContainer = Color(0xFFFFD7F0),
             background = Color(0xFFF5F8FF),
             surface = Color(0xFFEEF3FE),
             surfaceVariant = Color(0xFFE1EAF8),
+        )
+    }
+    ThemeColor.Purple -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFFD0BCFF),
+            primaryContainer = Color(0xFF4F378B),
+            secondary = Color(0xFFCCC2DC),
+            secondaryContainer = Color(0xFF4A4458),
+            tertiary = Color(0xFFEFB8C8),
+            tertiaryContainer = Color(0xFF633B48),
+            background = Color(0xFF17131D),
+            surface = Color(0xFF1D1824),
+            surfaceVariant = Color(0xFF2B2435),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF6750A4),
+            primaryContainer = Color(0xFFEADDFF),
+            secondary = Color(0xFF625B71),
+            secondaryContainer = Color(0xFFE8DEF8),
+            tertiary = Color(0xFF7D5260),
+            tertiaryContainer = Color(0xFFFFD8E4),
+            background = Color(0xFFFBF7FF),
+            surface = Color(0xFFF5F0FC),
+            surfaceVariant = Color(0xFFECE3F5),
+        )
+    }
+    ThemeColor.Green -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFF6FDBAF),
+            primaryContainer = Color(0xFF005138),
+            secondary = Color(0xFFB4CCBD),
+            secondaryContainer = Color(0xFF354B3F),
+            tertiary = Color(0xFFA5CDDF),
+            tertiaryContainer = Color(0xFF244C5B),
+            background = Color(0xFF0D1713),
+            surface = Color(0xFF121D18),
+            surfaceVariant = Color(0xFF203029),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF006C4C),
+            primaryContainer = Color(0xFF8BF8C8),
+            secondary = Color(0xFF4D6357),
+            secondaryContainer = Color(0xFFCFE9D9),
+            tertiary = Color(0xFF3D6373),
+            tertiaryContainer = Color(0xFFC1E8FB),
+            background = Color(0xFFF3FBF7),
+            surface = Color(0xFFECF6F0),
+            surfaceVariant = Color(0xFFDDECE4),
+        )
+    }
+    ThemeColor.Orange -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFFFFB870),
+            primaryContainer = Color(0xFF6B3900),
+            secondary = Color(0xFFE1C1A3),
+            secondaryContainer = Color(0xFF59422D),
+            tertiary = Color(0xFFC3CA9E),
+            tertiaryContainer = Color(0xFF42492B),
+            background = Color(0xFF1B140E),
+            surface = Color(0xFF211A13),
+            surfaceVariant = Color(0xFF33271B),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF8D4E00),
+            primaryContainer = Color(0xFFFFDCC0),
+            secondary = Color(0xFF725A42),
+            secondaryContainer = Color(0xFFFFDCC0),
+            tertiary = Color(0xFF5A6146),
+            tertiaryContainer = Color(0xFFDEE6BF),
+            background = Color(0xFFFFF8F2),
+            surface = Color(0xFFFFF1E5),
+            surfaceVariant = Color(0xFFF5E3D3),
+        )
+    }
+    ThemeColor.Rose -> if (dark) {
+        darkColorScheme(
+            primary = Color(0xFFFFB1C5),
+            primaryContainer = Color(0xFF7C2944),
+            secondary = Color(0xFFE4BDC7),
+            secondaryContainer = Color(0xFF594047),
+            tertiary = Color(0xFFF0BE95),
+            tertiaryContainer = Color(0xFF5D421E),
+            background = Color(0xFF1C1216),
+            surface = Color(0xFF24171C),
+            surfaceVariant = Color(0xFF35232A),
+        )
+    } else {
+        lightColorScheme(
+            primary = Color(0xFF9A405C),
+            primaryContainer = Color(0xFFFFD9E1),
+            secondary = Color(0xFF74565E),
+            secondaryContainer = Color(0xFFFFD9E1),
+            tertiary = Color(0xFF7C5735),
+            tertiaryContainer = Color(0xFFFFDCBB),
+            background = Color(0xFFFFF7F9),
+            surface = Color(0xFFFFEEF2),
+            surfaceVariant = Color(0xFFF6E0E6),
         )
     }
 }

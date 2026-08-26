@@ -325,7 +325,7 @@ Run:
 
 ```bash
 gradle --no-daemon :app:compileDebugKotlin
-rg -n "AppItem|AppsPage|installedApps|QUERY_ALL_PACKAGES|gainDb|AudioRecord|MediaRecorder|requestAppScope|configuredPackages|rule:" app README.md
+rg -n "AppItem|AppsPage|installedApps|QUERY_ALL_PACKAGES|gainDb|AudioRecord|MediaRecorder|requestAppScope|configuredPackages|rule:" app/src/main README.md
 ```
 
 Expected: compilation exits 0 and `rg` returns no matches for removed behavior.
@@ -365,7 +365,7 @@ Run:
 
 ```bash
 git diff --check
-rg -n "AppItem|AppsPage|installedApps|QUERY_ALL_PACKAGES|gainDb|AudioRecord|MediaRecorder|requestAppScope|configuredPackages|rule:" app README.md
+rg -n "AppItem|AppsPage|installedApps|QUERY_ALL_PACKAGES|gainDb|AudioRecord|MediaRecorder|requestAppScope|configuredPackages|rule:" app/src/main README.md
 Get-Content app/src/main/resources/META-INF/xposed/scope.list
 git status --short
 ```

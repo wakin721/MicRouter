@@ -8,17 +8,19 @@ import android.media.AudioManager
 import android.media.MicrophoneInfo
 import android.os.Build
 import android.os.Handler
-import android.os.Looper
+import android.os.HandlerThread
+import android.os.Process
 import android.util.Log
 import java.lang.reflect.Method
 
 class SystemMicrophoneRouter(
     private val logger: (priority: Int, message: String) -> Unit,
 ) {
-    private val handler = Handler(Looper.getMainLooper())
     private var started = false
     private var audioManager: AudioManager? = null
     private var preferences: SharedPreferences? = null
+    private var workerThread: HandlerThread? = null
+    private var handler: Handler? = null
 
     private val preferenceListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -34,33 +36,57 @@ class SystemMicrophoneRouter(
     fun start(context: Context, routePreferences: SharedPreferences) {
         if (started) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            logger(Log.WARN, "Global microphone routing requires Android 11 or newer")
+            logSafely(Log.WARN, "Global microphone routing requires Android 11 or newer")
             return
         }
 
-        val manager = context.getSystemService(AudioManager::class.java)
-        if (manager == null) {
-            logger(Log.ERROR, "AudioManager unavailable; global routing was not started")
-            return
-        }
+        var newThread: HandlerThread? = null
+        runCatching {
+            val manager = context.getSystemService(AudioManager::class.java)
+                ?: error("AudioManager unavailable")
+            newThread = HandlerThread(
+                "MicRouterRouting",
+                Process.THREAD_PRIORITY_BACKGROUND,
+            ).apply { start() }
+            val workerHandler = Handler(checkNotNull(newThread).looper)
 
-        audioManager = manager
-        preferences = routePreferences
-        routePreferences.registerOnSharedPreferenceChangeListener(preferenceListener)
-        manager.registerAudioDeviceCallback(deviceCallback, handler)
-        started = true
-        scheduleApply()
-        logger(Log.INFO, "Global microphone routing started in system_server")
+            audioManager = manager
+            preferences = routePreferences
+            workerThread = newThread
+            handler = workerHandler
+            routePreferences.registerOnSharedPreferenceChangeListener(preferenceListener)
+            manager.registerAudioDeviceCallback(deviceCallback, workerHandler)
+            started = true
+            scheduleApply()
+            logSafely(Log.INFO, "Global microphone routing started in system_server")
+        }.onFailure { failure ->
+            runCatching { routePreferences.unregisterOnSharedPreferenceChangeListener(preferenceListener) }
+            runCatching { audioManager?.unregisterAudioDeviceCallback(deviceCallback) }
+            runCatching { newThread?.quitSafely() }
+            handler = null
+            workerThread = null
+            preferences = null
+            audioManager = null
+            logSafely(Log.ERROR, "Global microphone routing startup failed: $failure")
+        }
     }
 
     private fun scheduleApply() {
-        handler.removeCallbacks(applyRoute)
-        handler.post(applyRoute)
+        val workerHandler = handler ?: return
+        runCatching {
+            workerHandler.removeCallbacks(applyRoute)
+            workerHandler.post(applyRoute)
+        }.onFailure { logSafely(Log.ERROR, "Could not schedule microphone routing: $it") }
     }
 
-    private val applyRoute = Runnable {
-        val manager = audioManager ?: return@Runnable
-        val routePreferences = preferences ?: return@Runnable
+    private val applyRoute = ExceptionIsolatingTask(
+        action = ::applySavedRoute,
+        onFailure = { logSafely(Log.ERROR, "Global microphone routing failed safely: $it") },
+    )
+
+    private fun applySavedRoute() {
+        val manager = audioManager ?: return
+        val routePreferences = preferences ?: return
         val route = RouteStore.readSystemRoute(routePreferences)
         val inputs = manager.getDevices(AudioManager.GET_DEVICES_INPUTS)
             .filter { it.isSource }
@@ -70,26 +96,30 @@ class SystemMicrophoneRouter(
         val resolvedDevice = identities.entries.firstOrNull { it.value == resolvedIdentity }?.key
 
         if (route.enabled && resolvedDevice == null) {
-            logger(Log.WARN, "Selected microphone is unavailable; using system default until it returns")
+            logSafely(Log.WARN, "Selected microphone is unavailable; using system default until it returns")
         }
 
         val backend = runCatching { ReflectiveCapturePresetBackend(manager) }
-            .onFailure { logger(Log.ERROR, "Capture routing API unavailable: $it") }
+            .onFailure { logSafely(Log.ERROR, "Capture routing API unavailable: $it") }
             .getOrNull()
-            ?: return@Runnable
+            ?: return
 
         val attributes = resolvedDevice?.let { device ->
             runCatching { backend.attributesFor(device) }
-                .onFailure { logger(Log.ERROR, "Could not describe selected microphone: $it") }
+                .onFailure { logSafely(Log.ERROR, "Could not describe selected microphone: $it") }
                 .getOrNull()
         }
         val report = CapturePresetCoordinator(backend).apply(attributes)
         if (report.failedPresets.isEmpty()) {
             val label = resolvedIdentity?.name ?: "System default"
-            logger(Log.INFO, "Capture presets routed to $label")
+            logSafely(Log.INFO, "Capture presets routed to $label")
         } else {
-            logger(Log.WARN, "Capture preset routing failed for ${report.failedPresets.joinToString()}")
+            logSafely(Log.WARN, "Capture preset routing failed for ${report.failedPresets.joinToString()}")
         }
+    }
+
+    private fun logSafely(priority: Int, message: String) {
+        runCatching { logger(priority, message) }
     }
 
     private fun AudioDeviceInfo.toIdentity(microphones: List<MicrophoneInfo>): InputDeviceIdentity {

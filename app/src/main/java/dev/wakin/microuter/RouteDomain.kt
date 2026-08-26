@@ -60,8 +60,10 @@ data class SystemRoute(
                     microphoneGroup = json.optInt("microphoneGroup", -1),
                     microphoneIndex = json.optInt("microphoneIndex", -1),
                     deviceName = json.optString("deviceName", "System default"),
-                )
-            }.getOrDefault(SystemRoute())
+                ).let { route ->
+                    if (route.enabled && route.deviceType >= 0) route else systemDefault()
+                }
+            }.getOrDefault(systemDefault())
         }
     }
 }

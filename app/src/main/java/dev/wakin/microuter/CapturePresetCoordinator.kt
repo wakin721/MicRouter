@@ -14,6 +14,19 @@ data class CapturePresetApplyReport(
     val failedPresets: List<Int>,
 )
 
+class ExceptionIsolatingTask(
+    private val action: () -> Unit,
+    private val onFailure: (Throwable) -> Unit,
+) : Runnable {
+    override fun run() {
+        try {
+            action()
+        } catch (failure: Throwable) {
+            runCatching { onFailure(failure) }
+        }
+    }
+}
+
 class CapturePresetCoordinator<T>(
     private val backend: CapturePresetBackend<T>,
 ) {
