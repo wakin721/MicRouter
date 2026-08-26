@@ -14,7 +14,7 @@ MicRouter will select one preferred microphone for the whole Android system with
 - Disable selection and show the existing LSPosed guidance when the module service is unavailable.
 - Preserve the About destination and its language, dynamic color, appearance, and manual theme-color controls.
 - Remove the software input-gain control and its explanatory text because buffer amplification required application-process hooks.
-- Replace the automatic per-application scope option with guidance that MicRouter needs only the `System Framework (android)` scope.
+- Replace the automatic per-application scope option with guidance that MicRouter uses the fixed `system` scope.
 
 ## Configuration Model
 
@@ -33,7 +33,7 @@ Device resolution prefers the stable address, then microphone group/index metada
 
 ## System Routing Architecture
 
-The libxposed module loads only for package `android` in `system_server`. It no longer hooks `AudioRecord`, `MediaRecorder`, or PCM `read` methods.
+The libxposed module loads only in `system_server` through `onSystemServerStarting` and the static `system` scope. It no longer hooks `AudioRecord`, `MediaRecorder`, or PCM `read` methods.
 
 The module hooks Android audio-service initialization to capture its system `Context`. After that service is ready, the module obtains the system audio manager and applies the selected device through Android's hidden capture-preset routing API. Reflection is isolated behind a `SystemMicrophoneRouter` component so Android-version and vendor differences do not leak into configuration or UI code.
 
@@ -76,7 +76,7 @@ The application UI writes only configuration; it never calls hidden audio APIs a
 
 ## Scope and Metadata
 
-The static Xposed scope contains only `android`. UI copy and README instructions tell users to enable MicRouter for `System Framework (android)` and reboot. No installed-app query or `QUERY_ALL_PACKAGES` permission remains.
+The static Xposed scope contains only `system`. UI copy and README instructions tell users to enable MicRouter and reboot; no application scope selection is needed. No installed-app query or `QUERY_ALL_PACKAGES` permission remains.
 
 ## Testing
 
@@ -84,7 +84,7 @@ Automated JVM tests cover configuration serialization/migration, device-identity
 
 Manual rooted-device verification covers:
 
-1. enable only the System Framework scope and reboot;
+1. enable the module with its fixed `system` scope and reboot;
 2. select each connected input and start recording from Java and native-backed applications;
 3. confirm the routed input through Android recording diagnostics and module logs;
 4. select System default and confirm MicRouter preferences are cleared;

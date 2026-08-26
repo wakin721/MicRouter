@@ -14,7 +14,7 @@
 
 - The launch page contains only the global microphone selector; About, language, dynamic color, appearance mode, manual theme color, and LSPosed status remain.
 - Per-application rules, app queries, app scope requests, and software gain are removed.
-- Xposed static scope is exactly `android`; no target application process is hooked.
+- Xposed static scope is exactly `system`; no target application process is hooked.
 - System routing modifies only `DEFAULT`, `MIC`, `CAMCORDER`, `VOICE_RECOGNITION`, `VOICE_COMMUNICATION`, `UNPROCESSED`, and `VOICE_PERFORMANCE`.
 - The APK remains installable from Android 9 (`minSdk = 28`), but system-wide routing is enabled only on Android 11+.
 - Hidden API failures never escape into or crash `system_server`.
@@ -30,7 +30,7 @@
 - Modify: `app/build.gradle.kts`
 
 **Interfaces:**
-- Produces: `SystemRoute`, `InputDeviceIdentity`, `InputDeviceResolver.resolve(SystemRoute, List<InputDeviceIdentity>)`, and `RouteStore.readGlobal/writeGlobal`.
+- Produces: `SystemRoute`, `InputDeviceIdentity`, `InputDeviceResolver.resolve(SystemRoute, List<InputDeviceIdentity>)`, and `RouteStore.readSystemRoute/writeSystemRoute`.
 - Preserves: migration from the existing `global_rule` JSON while ignoring `packageName` and `gainDb`.
 
 - [ ] **Step 1: Add JVM test dependencies**
@@ -97,10 +97,10 @@ object RouteStore {
     const val PREFS = "routes"
     const val GLOBAL_KEY = "global_rule"
 
-    fun readGlobal(prefs: SharedPreferences): SystemRoute =
+    fun readSystemRoute(prefs: SharedPreferences): SystemRoute =
         SystemRoute.fromJson(prefs.getString(GLOBAL_KEY, null))
 
-    fun writeGlobal(prefs: SharedPreferences, route: SystemRoute) {
+    fun writeSystemRoute(prefs: SharedPreferences, route: SystemRoute) {
         prefs.edit().putString(GLOBAL_KEY, route.toJson()).apply()
     }
 }
@@ -229,7 +229,7 @@ It must:
 
 - [ ] **Step 4: Replace the per-app module entry point**
 
-`ModuleMain.onPackageReady` must return unless `param.packageName == "android"` and `param.isFirstPackage`. Load `com.android.server.audio.AudioService` from the package class loader, hook every constructor to capture its `Context` argument, and hook `systemReady` to call `SystemMicrophoneRouter.start` after `chain.proceed()`.
+`ModuleMain.onSystemServerStarting` loads `com.android.server.audio.AudioService` from the system-server class loader, hooks every constructor to capture its `Context` argument, and hooks `systemReady` to call `SystemMicrophoneRouter.start` after `chain.proceed()`.
 
 Delete every `AudioRecord`, `MediaRecorder`, PCM amplification, application-context lookup, and per-package rule path.
 
@@ -238,7 +238,7 @@ Delete every `AudioRecord`, `MediaRecorder`, PCM amplification, application-cont
 Set `scope.list` content to exactly:
 
 ```text
-android
+system
 ```
 
 - [ ] **Step 6: Run unit tests and compile the module**
@@ -269,7 +269,7 @@ git commit -m "feat: route microphones from system server"
 - Modify: `README.md`
 
 **Interfaces:**
-- Consumes: `RouteStore.readGlobal/writeGlobal`, `SystemRoute`, and connected `AudioDeviceInfo` values.
+- Consumes: `RouteStore.readSystemRoute/writeSystemRoute`, `SystemRoute`, and connected `AudioDeviceInfo` values.
 - Produces: `MainPage.Microphone` as the launch destination and preserves `MainPage.About`.
 
 - [ ] **Step 1: Add a route-selection state test**
@@ -313,11 +313,11 @@ In `MainActivity.kt`:
 - remove `AppItem`, installed-app loading, `AppsPage`, `AppIcon`, `RouteDialog`, request-scope helpers, search, app cards, app icons, auto-scope preference, and gain UI/copy;
 - add `MicrophonePage` that renders `System default` plus `currentInputs`, persists immediately on selection, and shows Android 11+/LSPosed disabled guidance;
 - keep `AboutPage`, theme functions, language, dynamic color, appearance mode, theme color, and LSPosed status;
-- replace the About auto-scope switch with static System Framework scope/reboot instructions.
+- replace the About auto-scope switch with fixed `system` scope/reboot instructions.
 
 - [ ] **Step 5: Remove obsolete package visibility and update README**
 
-Delete `QUERY_ALL_PACKAGES` from the manifest. Rewrite README to describe system-wide routing, Android 11+, root/LSPosed, and System Framework-only scope; remove all per-app/gain claims.
+Delete `QUERY_ALL_PACKAGES` from the manifest. Rewrite README to describe system-wide routing, Android 11+, root/LSPosed, and the fixed `system` scope; remove all per-app/gain claims.
 
 - [ ] **Step 6: Compile and scan for removed behavior**
 
@@ -370,8 +370,8 @@ Get-Content app/src/main/resources/META-INF/xposed/scope.list
 git status --short
 ```
 
-Expected: no whitespace errors, removed-symbol scan has no matches, scope output is only `android`, and status contains only intended changes (or is clean after task commits).
+Expected: no whitespace errors, removed-symbol scan has no matches, scope output is only `system`, and status contains only intended changes (or is clean after task commits).
 
 - [ ] **Step 4: Document device-only verification**
 
-Report that hardware verification still requires installing the APK on an Android 11+ rooted device, enabling only `System Framework (android)`, rebooting, and checking Java plus native-backed recorders. Do not claim actual routed-device behavior from JVM/build evidence alone.
+Report that hardware verification still requires installing the APK on an Android 11+ rooted device, enabling the module with its fixed `system` scope, rebooting, and checking Java plus native-backed recorders. Do not claim actual routed-device behavior from JVM/build evidence alone.
