@@ -8,6 +8,38 @@ import org.junit.Test
 
 class RouteDomainTest {
     @Test
+    fun systemDefaultFactoryDisablesExplicitRouting() {
+        assertEquals(SystemRoute(), SystemRoute.systemDefault())
+    }
+
+    @Test
+    fun deviceFactoryCopiesStableMicrophoneIdentity() {
+        val device = InputDeviceIdentity(
+            type = 15,
+            address = "usb:2,3",
+            id = 42,
+            microphoneDescription = "front capsule",
+            microphoneGroup = 7,
+            microphoneIndex = 1,
+            name = "USB microphone",
+        )
+
+        assertEquals(
+            SystemRoute(
+                enabled = true,
+                deviceType = 15,
+                deviceAddress = "usb:2,3",
+                deviceIdHint = 42,
+                microphoneDescription = "front capsule",
+                microphoneGroup = 7,
+                microphoneIndex = 1,
+                deviceName = "USB microphone",
+            ),
+            SystemRoute.fromDevice(device),
+        )
+    }
+
+    @Test
     fun legacyGlobalRuleRetainsDeviceAndDropsPerAppFields() {
         val route = SystemRoute.fromJson(
             """{"packageName":"__global__","enabled":true,"deviceType":15,"deviceAddress":"usb:2","deviceIdHint":7,"microphoneDescription":"USB","microphoneGroup":3,"microphoneIndex":1,"deviceName":"USB microphone","gainDb":12}"""
