@@ -517,6 +517,7 @@ private fun FrameworkStatusCard(service: XposedService?, language: String) {
         value = if (service == null) {
             FrameworkInfoState.Disconnected
         } else {
+            value = FrameworkInfoState.Loading
             withContext(Dispatchers.IO) {
                 runCatching<FrameworkInfoState> {
                     FrameworkInfoState.Available(
@@ -758,7 +759,8 @@ private fun ThemePaletteTile(
         Spacer(Modifier.height(4.dp))
         Text(
             label,
-            maxLines = 1,
+            minLines = 2,
+            maxLines = 2,
             fontSize = 11.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.55f),
